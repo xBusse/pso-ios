@@ -37,6 +37,10 @@ set(CORESERV_LIBRARY "-framework CoreServices" CACHE STRING "" FORCE)
 set(COREFOUNDATION_LIBRARY "-framework CoreFoundation" CACHE STRING "" FORCE)
 set(FOUNDATION_LIBRARY "-framework Foundation" CACHE STRING "" FORCE)
 
+# Always use Dolphin's bundled libraries: anything found on the Mac (Homebrew)
+# is built for macOS and can't link into an iOS app.
+set(USE_SYSTEM_LIBS OFF CACHE STRING "" FORCE)
+
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(MODERNGEKKO_ENABLE_DOLPHIN_TESTS OFF CACHE BOOL "" FORCE)
 set(MODERNGEKKO_ENABLE_DISC_TOOL OFF CACHE BOOL "" FORCE)

@@ -40,6 +40,8 @@ cp "$GAME_DIR/sys/main.dol" "$GEN_OUT/generated/main.dol"
 
 step "Configuring for iOS"
 # Response files: the game module links a few hundred chunk objects.
+# PKG_CONFIG_LIBDIR hides Homebrew's (macOS) libraries from pkg-config.
+PKG_CONFIG_LIBDIR=/var/empty PKG_CONFIG_PATH= \
 CMAKE_NINJA_FORCE_RESPONSE_FILE=1 cmake -S ios -B "$CMAKE_BUILD" -G Ninja \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_SYSTEM_PROCESSOR=arm64 \
