@@ -41,6 +41,11 @@ set(FOUNDATION_LIBRARY "-framework Foundation" CACHE STRING "" FORCE)
 # is built for macOS and can't link into an iOS app.
 set(USE_SYSTEM_LIBS OFF CACHE STRING "" FORCE)
 
+# curl's feature probes misfire when cross-compiling (struct timeval reported
+# missing, pipe2 found in an SDK newer than the deployment target). Use its
+# known-good Unix answers instead, which also mark pipe2 unavailable on Apple.
+set(_CURL_PREFILL ON CACHE BOOL "" FORCE)
+
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(MODERNGEKKO_ENABLE_DOLPHIN_TESTS OFF CACHE BOOL "" FORCE)
 set(MODERNGEKKO_ENABLE_DISC_TOOL OFF CACHE BOOL "" FORCE)

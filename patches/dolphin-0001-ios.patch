@@ -44,6 +44,50 @@ index 807dca3..b181e63 100644
    target_sources(common PRIVATE
      GL/GLInterface/AGL.h
      GL/GLInterface/AGL.mm
+diff --git a/Source/Core/Common/FilesystemWatcher.cpp b/Source/Core/Common/FilesystemWatcher.cpp
+index 9497023..f68057d 100644
+--- a/Source/Core/Common/FilesystemWatcher.cpp
++++ b/Source/Core/Common/FilesystemWatcher.cpp
+@@ -3,7 +3,21 @@
+ 
+ #include "Common/FilesystemWatcher.h"
+ 
++#if defined(DOLPHIN_IOS)
++// The watcher library uses macOS FSEvents. iOS has no use for live reloading
++// of custom assets, so watching is a no-op there.
++namespace wtr
++{
++inline namespace watcher
++{
++class watch
++{
++};
++}  // namespace watcher
++}  // namespace wtr
++#else
+ #include <wtr/watcher.hpp>
++#endif
+ 
+ #include "Common/Logging/Log.h"
+ #include "Common/StringUtil.h"
+@@ -15,6 +29,9 @@ FilesystemWatcher::~FilesystemWatcher() = default;
+ 
+ void FilesystemWatcher::Watch(const std::string& path)
+ {
++#if defined(DOLPHIN_IOS)
++  (void)path;
++#else
+   const auto [iter, inserted] = m_watched_paths.try_emplace(path, nullptr);
+   if (inserted)
+   {
+@@ -58,6 +75,7 @@ void FilesystemWatcher::Watch(const std::string& path)
+       }
+     });
+   }
++#endif
+ }
+ 
+ void FilesystemWatcher::Unwatch(const std::string& path)
 diff --git a/Source/Core/Common/GL/GLContext.cpp b/Source/Core/Common/GL/GLContext.cpp
 index eef6896..67db279 100644
 --- a/Source/Core/Common/GL/GLContext.cpp
@@ -66,6 +110,28 @@ index eef6896..67db279 100644
    if (wsi.type == WindowSystemType::MacOS || wsi.type == WindowSystemType::Headless)
      context = std::make_unique<GLContextAGL>();
  #endif
+diff --git a/Source/Core/Common/MemoryUtil.cpp b/Source/Core/Common/MemoryUtil.cpp
+index 0d66890..883a94b 100644
+--- a/Source/Core/Common/MemoryUtil.cpp
++++ b/Source/Core/Common/MemoryUtil.cpp
+@@ -93,7 +93,7 @@ static int& JITPageWriteNestCounter()
+ // Allows a thread to write to executable memory, but not execute the data.
+ void JITPageWriteEnableExecuteDisable()
+ {
+-#if defined(_M_ARM_64) && defined(__APPLE__)
++#if defined(_M_ARM_64) && defined(__APPLE__) && !defined(DOLPHIN_IOS)
+   if (JITPageWriteNestCounter() == 0)
+   {
+     pthread_jit_write_protect_np(0);
+@@ -112,7 +112,7 @@ void JITPageWriteDisableExecuteEnable()
+   if (JITPageWriteNestCounter() < 0)
+     PanicAlertFmt("JITPageWriteNestCounter() underflowed");
+ 
+-#if defined(_M_ARM_64) && defined(__APPLE__)
++#if defined(_M_ARM_64) && defined(__APPLE__) && !defined(DOLPHIN_IOS)
+   if (JITPageWriteNestCounter() == 0)
+   {
+     pthread_jit_write_protect_np(1);
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
 index e3581cc..ff23abc 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
@@ -170,6 +236,31 @@ index e56dd03..a87bca0 100644
  
  if(WIN32)
    if(MSVC)
+diff --git a/Source/Core/VideoBackends/Metal/MTLGfx.mm b/Source/Core/VideoBackends/Metal/MTLGfx.mm
+index 4b744fe..f827756 100644
+--- a/Source/Core/VideoBackends/Metal/MTLGfx.mm
++++ b/Source/Core/VideoBackends/Metal/MTLGfx.mm
+@@ -21,7 +21,9 @@
+ Metal::Gfx::Gfx(MRCOwned<CAMetalLayer*> layer) : m_layer(std::move(layer))
+ {
+   UpdateActiveConfig();
++#if TARGET_OS_OSX
+   [m_layer setDisplaySyncEnabled:g_ActiveConfig.bVSyncActive];
++#endif
+ 
+   SetupSurface();
+   g_state_tracker->FlushEncoders();
+@@ -288,8 +290,10 @@ void Metal::Gfx::OnConfigChanged(u32 bits)
+ {
+   AbstractGfx::OnConfigChanged(bits);
+ 
++#if TARGET_OS_OSX  // iOS layers always sync to the display
+   if (bits & CONFIG_CHANGE_BIT_VSYNC)
+     [m_layer setDisplaySyncEnabled:g_ActiveConfig.bVSyncActive];
++#endif
+ 
+   if (bits & CONFIG_CHANGE_BIT_ANISOTROPY)
+   {
 diff --git a/Source/Core/VideoBackends/Metal/MTLUtil.h b/Source/Core/VideoBackends/Metal/MTLUtil.h
 index 1752c82..935475f 100644
 --- a/Source/Core/VideoBackends/Metal/MTLUtil.h
