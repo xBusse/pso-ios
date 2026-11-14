@@ -1,0 +1,16 @@
+# Game data never goes in this repo
+iso/
+extracted/
+*.iso
+*.ciso
+*.gcm
+*.rvz
+*.dol
+
+build/
+generated/
+extern/
+database/
+build-*/
+.cache/
+.DS_Store

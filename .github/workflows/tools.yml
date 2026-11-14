@@ -1,0 +1,38 @@
+name: Build tools (macOS)
+
+# Builds DolRecomp and the ModernGekko runtime on Apple Silicon. No game
+# data is used here: this only proves the toolchain builds on macOS.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tools:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules
+        run: |
+          git submodule update --init --depth 1 lib/DolRecomp lib/pso-decomp
+          git -C lib/DolRecomp submodule update --init --recursive --depth 1
+          git submodule update --init --depth 1 lib/ModernGekko
+          git -C lib/ModernGekko submodule update --init --depth 1
+          # Dolphin's externals; bzip2 lives on GitLab, the rest on GitHub.
+          git -C lib/ModernGekko/vendor/dolphin submodule update --init --recursive --depth 1
+
+      - name: Install build tools
+        run: brew install ninja pkg-config
+
+      - name: Build DolRecomp
+        run: make dolrecomp
+
+      - name: Build ModernGekko
+        run: make moderngekko
+
+      - name: Show results
+        run: ls -l lib/DolRecomp/build/dolrecomp lib/ModernGekko/build/moderngekko-*

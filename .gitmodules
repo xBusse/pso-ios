@@ -1,0 +1,9 @@
+[submodule "lib/DolRecomp"]
+	path = lib/DolRecomp
+	url = https://github.com/ExpansionPak/DolRecomp.git
+[submodule "lib/ModernGekko"]
+	path = lib/ModernGekko
+	url = https://github.com/ExpansionPak/ModernGekko.git
+[submodule "lib/pso-decomp"]
+	path = lib/pso-decomp
+	url = https://github.com/xBusse/pso-decomp-ios.git
