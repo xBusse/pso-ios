@@ -6,6 +6,7 @@
 #   make recompile                Recompile PsoV3.dol and build the native module
 #   make run                      Recompile if needed and launch the game
 #   make names                    Write build/pso.map (decomp function names)
+#   make ios                      Build build/PSO-unsigned.ipa (needs Xcode)
 
 DOLRECOMP_DIR     := lib/DolRecomp
 MODERNGEKKO_DIR   := lib/ModernGekko
@@ -31,12 +32,14 @@ TOOLCHAIN ?= auto
 USER_DIR  := $(CURDIR)/build/user
 RUN_ARGS  ?=
 PATCHES   := $(wildcard patches/moderngekko-*.patch)
+DOLPHIN_PATCHES := $(wildcard patches/dolphin-*.patch)
+DOLPHIN_DIR := $(MODERNGEKKO_DIR)/vendor/dolphin
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names clean clean-game
+.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names ios clean clean-game
 
 help:
-	@sed -n '4,9p' Makefile | sed 's/^# //'
+	@sed -n '4,10p' Makefile | sed 's/^# //'
 
 submodules:
 	@if [ ! -f "$(DOLRECOMP_DIR)/CMakeLists.txt" ] || [ ! -f "$(MODERNGEKKO_DIR)/CMakeLists.txt" ] || \
@@ -49,12 +52,17 @@ dolrecomp: submodules
 	cmake -S $(DOLRECOMP_DIR) -B $(DOLRECOMP_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
 	cmake --build $(DOLRECOMP_BUILD) --target dolrecomp -j$(JOBS)
 
-# Local fixes to ModernGekko (e.g. Metal as the Apple video backend). Each
-# patch is applied once; already-applied patches are skipped.
+# Local fixes to ModernGekko and its Dolphin (Metal on Apple, iOS support).
+# Each patch is applied once; already-applied patches are skipped. The iOS
+# changes are behind IOS / DOLPHIN_IOS, so the Mac build is unaffected.
 patch-moderngekko: submodules
 	@for p in $(PATCHES); do \
 	  if git -C $(MODERNGEKKO_DIR) apply --reverse --check "$(CURDIR)/$$p" 2>/dev/null; then :; \
 	  else echo "Applying $$p"; git -C $(MODERNGEKKO_DIR) apply "$(CURDIR)/$$p" || exit 1; fi; \
+	done
+	@for p in $(DOLPHIN_PATCHES); do \
+	  if git -C $(DOLPHIN_DIR) apply --reverse --check "$(CURDIR)/$$p" 2>/dev/null; then :; \
+	  else echo "Applying $$p"; git -C $(DOLPHIN_DIR) apply "$(CURDIR)/$$p" || exit 1; fi; \
 	done
 
 moderngekko: patch-moderngekko
@@ -93,6 +101,11 @@ user-config:
 
 run: moderngekko extract user-config
 	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- --user-dir $(USER_DIR) $(RUN_ARGS)
+
+# iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the
+# runtime, game module and app for the iOS SDK.
+ios: moderngekko extract
+	JOBS=$(JOBS) scripts/build-ios.sh
 
 names: submodules
 	@mkdir -p build

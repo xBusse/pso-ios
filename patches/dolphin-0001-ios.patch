@@ -1,0 +1,200 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9f837ec..2904682 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -661,8 +661,8 @@ if(ENABLE_VULKAN)
+   endif()
+ endif()
+ 
+-if(NOT (WIN32 AND _M_ARM_64))
+-  # OpenGL is available on all platforms except windows-arm64
++if(NOT (WIN32 AND _M_ARM_64) AND NOT IOS)
++  # OpenGL is available on all platforms except windows-arm64 and iOS
+   add_definitions(-DHAS_OPENGL)
+ endif()
+ 
+@@ -715,7 +715,7 @@ if(ENABLE_CUBEB)
+   add_definitions(-DHAVE_CUBEB)
+ endif()
+ 
+-if(NOT ANDROID)
++if(NOT ANDROID AND NOT IOS)
+   dolphin_find_optional_system_library(LibUSB Externals/libusb)
+   add_definitions(-D__LIBUSB__)
+ endif()
+@@ -743,7 +743,7 @@ dolphin_find_optional_system_library(MBEDTLS Externals/mbedtls 2.28)
+ 
+ dolphin_find_optional_system_library(CURL Externals/curl)
+ 
+-if(NOT ANDROID)
++if(NOT ANDROID AND NOT IOS)
+   dolphin_find_optional_system_library(HIDAPI Externals/hidapi)
+ endif()
+ 
+diff --git a/Source/Core/Common/CMakeLists.txt b/Source/Core/Common/CMakeLists.txt
+index 807dca3..b181e63 100644
+--- a/Source/Core/Common/CMakeLists.txt
++++ b/Source/Core/Common/CMakeLists.txt
+@@ -327,7 +327,7 @@ if(WIN32)
+   if(MSVC)
+     target_sources(common PRIVATE CompatPatches.cpp)
+   endif()
+-elseif(APPLE)
++elseif(APPLE AND NOT IOS)
+   target_sources(common PRIVATE
+     GL/GLInterface/AGL.h
+     GL/GLInterface/AGL.mm
+diff --git a/Source/Core/Common/GL/GLContext.cpp b/Source/Core/Common/GL/GLContext.cpp
+index eef6896..67db279 100644
+--- a/Source/Core/Common/GL/GLContext.cpp
++++ b/Source/Core/Common/GL/GLContext.cpp
+@@ -5,7 +5,7 @@
+ 
+ #include "Common/GL/GLContext.h"
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(DOLPHIN_IOS)
+ #include "Common/GL/GLInterface/AGL.h"
+ #endif
+ #if defined(_WIN32)
+@@ -79,7 +79,7 @@ std::unique_ptr<GLContext> GLContext::Create(const WindowSystemInfo& wsi, bool s
+                                              bool prefer_gles)
+ {
+   std::unique_ptr<GLContext> context;
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(DOLPHIN_IOS)
+   if (wsi.type == WindowSystemType::MacOS || wsi.type == WindowSystemType::Headless)
+     context = std::make_unique<GLContextAGL>();
+ #endif
+diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
+index e3581cc..ff23abc 100644
+--- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
++++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
+@@ -185,7 +185,9 @@ void StaticRecompCore::Init()
+   m_lockstep_verifier = std::make_unique<StaticRecompLockstep::StaticRecompLockstepVerifier>(*this);
+   m_lockstep_verifier->Init();
+ 
+-#ifdef _M_ARM_64
++#if defined(DOLPHIN_NO_JIT)
++  // Executable memory isn't available; uncovered code runs on the interpreter.
++#elif defined(_M_ARM_64)
+   m_fallback_jit = std::make_unique<JitArm64>(m_system);
+ #elif defined(_M_X86_64)
+   m_fallback_jit = std::make_unique<Jit64>(m_system);
+diff --git a/Source/Core/InputCommon/CMakeLists.txt b/Source/Core/InputCommon/CMakeLists.txt
+index ddf8c30..3b29020 100644
+--- a/Source/Core/InputCommon/CMakeLists.txt
++++ b/Source/Core/InputCommon/CMakeLists.txt
+@@ -113,7 +113,7 @@ if(WIN32)
+     )
+   endif()
+   target_link_libraries(inputcommon PRIVATE cfgmgr32.lib dinput8.lib dxguid.lib)
+-elseif(APPLE)
++elseif(APPLE AND NOT IOS)
+   target_sources(inputcommon PRIVATE
+     ControllerInterface/Quartz/Quartz.h
+     ControllerInterface/Quartz/Quartz.mm
+diff --git a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h b/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
+index 8f7f4ba..3f11a42 100644
+--- a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
++++ b/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
+@@ -22,7 +22,7 @@
+ #ifdef HAVE_X11
+ #define CIFACE_USE_XLIB
+ #endif
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(DOLPHIN_IOS)
+ #define CIFACE_USE_OSX
+ #endif
+ #if defined(HAVE_LIBEVDEV) && defined(HAVE_LIBUDEV)
+diff --git a/Source/Core/UICommon/UICommon.cpp b/Source/Core/UICommon/UICommon.cpp
+index 01dc87b..2ff5b27 100644
+--- a/Source/Core/UICommon/UICommon.cpp
++++ b/Source/Core/UICommon/UICommon.cpp
+@@ -55,7 +55,7 @@
+ #include "UICommon/DBusUtils.h"
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(DOLPHIN_IOS)
+ #include <IOKit/pwr_mgt/IOPMLib.h>
+ #endif
+ 
+@@ -517,7 +517,7 @@ void InhibitScreenSaver(bool inhibit)
+                           (inhibit ? (ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED) : 0));
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(DOLPHIN_IOS)
+   static IOPMAssertionID s_power_assertion = kIOPMNullAssertionID;
+   if (inhibit)
+   {
+diff --git a/Source/Core/VideoBackends/CMakeLists.txt b/Source/Core/VideoBackends/CMakeLists.txt
+index e56dd03..a87bca0 100644
+--- a/Source/Core/VideoBackends/CMakeLists.txt
++++ b/Source/Core/VideoBackends/CMakeLists.txt
+@@ -1,6 +1,8 @@
+-add_subdirectory(OGL)
++if(NOT IOS)
++  add_subdirectory(OGL)
++  add_subdirectory(Software)
++endif()
+ add_subdirectory(Null)
+-add_subdirectory(Software)
+ 
+ if(WIN32)
+   if(MSVC)
+diff --git a/Source/Core/VideoBackends/Metal/MTLUtil.h b/Source/Core/VideoBackends/Metal/MTLUtil.h
+index 1752c82..935475f 100644
+--- a/Source/Core/VideoBackends/Metal/MTLUtil.h
++++ b/Source/Core/VideoBackends/Metal/MTLUtil.h
+@@ -3,7 +3,10 @@
+ 
+ #pragma once
+ 
++#include <TargetConditionals.h>
++#if TARGET_OS_OSX
+ #include <AppKit/NSScreen.h>
++#endif
+ #include <Metal/Metal.h>
+ 
+ #include <vector>
+diff --git a/Source/Core/VideoBackends/Metal/MTLUtil.mm b/Source/Core/VideoBackends/Metal/MTLUtil.mm
+index 9298c5b..4b076be 100644
+--- a/Source/Core/VideoBackends/Metal/MTLUtil.mm
++++ b/Source/Core/VideoBackends/Metal/MTLUtil.mm
+@@ -78,8 +78,12 @@ void Metal::Util::PopulateBackendInfo(BackendInfo* backend_info)
+   backend_info->bSupportsPartialMultisampleResolve = false;
+   backend_info->bSupportsDynamicVertexLoader = true;
+   backend_info->bSupportsVSLinePointExpand = true;
++#if TARGET_OS_OSX
+   backend_info->bSupportsHDROutput =
+       1.0 < [[NSScreen deepestScreen] maximumPotentialExtendedDynamicRangeColorComponentValue];
++#else
++  backend_info->bSupportsHDROutput = false;
++#endif
+ }
+ 
+ void Metal::Util::PopulateBackendInfoAdapters(BackendInfo* backend_info,
+diff --git a/Source/Core/VideoCommon/VertexLoaderBase.cpp b/Source/Core/VideoCommon/VertexLoaderBase.cpp
+index 98eb651..4a677d8 100644
+--- a/Source/Core/VideoCommon/VertexLoaderBase.cpp
++++ b/Source/Core/VideoCommon/VertexLoaderBase.cpp
+@@ -25,7 +25,7 @@
+ 
+ #ifdef _M_X86_64
+ #include "VideoCommon/VertexLoaderX64.h"
+-#elif defined(_M_ARM_64)
++#elif defined(_M_ARM_64) && !defined(DOLPHIN_NO_JIT)
+ #include "VideoCommon/VertexLoaderARM64.h"
+ #endif
+ 
+@@ -246,7 +246,7 @@ std::unique_ptr<VertexLoaderBase> VertexLoaderBase::CreateVertexLoader(const TVt
+ 
+ #if defined(_M_X86_64)
+   native_loader = std::make_unique<VertexLoaderX64>(vtx_desc, vtx_attr);
+-#elif defined(_M_ARM_64)
++#elif defined(_M_ARM_64) && !defined(DOLPHIN_NO_JIT)
+   native_loader = std::make_unique<VertexLoaderARM64>(vtx_desc, vtx_attr);
+ #endif
+ 

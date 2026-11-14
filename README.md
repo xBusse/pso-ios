@@ -26,6 +26,21 @@ puts `PsoV3.dol` in its place, so the real game is what gets recompiled.
 SHA-1 `0d85744b51d7379efb025a943d0cd5aaae2191a3`. A CISO converted back to ISO won't match the full-dump
 hash, because CISO drops the disc's padding.
 
+## Building for iOS (Mac with Xcode)
+
+    make ios
+
+This builds the Mac tools if needed, recompiles `PsoV3.dol`, builds the runtime, game module and app for the
+iOS SDK, and writes `build/PSO-unsigned.ipa`. Sign and install it with your usual sideloading tool.
+
+The game files aren't in the app. Copy them over once: connect the iPhone, open it in Finder, go to **Files**,
+and drag `extracted/pso` onto **PSO**. Saves go to the app's `User` folder.
+
+How iOS differs from the Mac build (patches in `patches/`, all behind `IOS` / `DOLPHIN_IOS`):
+- Video is Metal only; the app hands Dolphin a `CAMetalLayer` (`ios/src/PlatformIOS.mm`).
+- No JIT: anything outside the recompiled code runs on the interpreter, and vertex loading uses the portable loader.
+- Input comes from the on-screen pad or a connected controller (Xbox/PlayStation/MFi).
+
 ## Status
 
 - [x] Disc handling: CISO conversion, extraction, DOL check
@@ -34,4 +49,5 @@ hash, because CISO drops the disc's padding.
 - [x] Game module recompiles and loads (entry 0x8000C040)
 - [x] Runs on Mac (Metal): menus, first area, controls, save/load all work
 - [ ] Known issue: the "go to the calendar?" option from the clock prompt leads to a black screen
-- [ ] iOS: Metal backend, touch controls, app bundle
+- [x] Metal video backend
+- [ ] iOS: runtime builds for the iOS SDK, app boots, touch controls
