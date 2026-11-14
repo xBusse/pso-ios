@@ -30,6 +30,6 @@ hash, because CISO drops the disc's padding.
 
 - [x] Disc handling: CISO conversion, extraction, DOL check
 - [x] Recompile: 1,085,944 instructions, 0 unknown; generated C compiles with clang
-- [ ] ModernGekko runtime built on macOS (CI: `.github/workflows/tools.yml`)
+- [ ] ModernGekko runtime built on macOS (local build, no CI)
 - [ ] Boots on Mac
 - [ ] iOS: Metal backend, touch controls, app bundle
