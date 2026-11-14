@@ -32,5 +32,6 @@ hash, because CISO drops the disc's padding.
 - [x] Recompile: 1,085,944 instructions, 0 unknown; generated C compiles with clang
 - [x] ModernGekko runtime built on macOS (local build, no CI)
 - [x] Game module recompiles and loads (entry 0x8000C040)
-- [ ] Boots on Mac
+- [x] Runs on Mac (Metal): menus, first area, controls, save/load all work
+- [ ] Known issue: the "go to the calendar?" option from the clock prompt leads to a black screen
 - [ ] iOS: Metal backend, touch controls, app bundle
