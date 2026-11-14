@@ -56,14 +56,8 @@ dolrecomp: submodules
 # Each patch is applied once; already-applied patches are skipped. The iOS
 # changes are behind IOS / DOLPHIN_IOS, so the Mac build is unaffected.
 patch-moderngekko: submodules
-	@for p in $(PATCHES); do \
-	  if git -C $(MODERNGEKKO_DIR) apply --reverse --check "$(CURDIR)/$$p" 2>/dev/null; then :; \
-	  else echo "Applying $$p"; git -C $(MODERNGEKKO_DIR) apply "$(CURDIR)/$$p" || exit 1; fi; \
-	done
-	@for p in $(DOLPHIN_PATCHES); do \
-	  if git -C $(DOLPHIN_DIR) apply --reverse --check "$(CURDIR)/$$p" 2>/dev/null; then :; \
-	  else echo "Applying $$p"; git -C $(DOLPHIN_DIR) apply "$(CURDIR)/$$p" || exit 1; fi; \
-	done
+	@scripts/apply-patches.sh $(MODERNGEKKO_DIR) build/patches/moderngekko $(PATCHES)
+	@scripts/apply-patches.sh $(DOLPHIN_DIR) build/patches/dolphin $(DOLPHIN_PATCHES)
 
 moderngekko: patch-moderngekko
 	cmake -S $(MODERNGEKKO_DIR) -B $(MODERNGEKKO_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
