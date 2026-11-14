@@ -33,9 +33,14 @@ if [ ! -f "$GEN_OUT/generated/generated.h" ] || [ "$GAME_DIR/sys/main.dol" -nt "
 else
   echo "up to date"
 fi
+# The module template also wants the DOL and an SMC table next to the
+# generated code (ModernGekko's port tool sets these up the same way).
+cp "$GAME_DIR/sys/main.dol" "$GEN_OUT/generated/main.dol"
+[ -f "$GEN_OUT/generated/generated_smc.txt" ] || : > "$GEN_OUT/generated/generated_smc.txt"
 
 step "Configuring for iOS"
-cmake -S ios -B "$CMAKE_BUILD" -G Ninja \
+# Response files: the game module links a few hundred chunk objects.
+CMAKE_NINJA_FORCE_RESPONSE_FILE=1 cmake -S ios -B "$CMAKE_BUILD" -G Ninja \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_SYSTEM_PROCESSOR=arm64 \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
