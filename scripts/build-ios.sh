@@ -23,7 +23,7 @@ if ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   echo "       then run: sudo xcode-select -s /Applications/Xcode.app" >&2
   exit 1
 fi
-xcodebuild -version | head -1
+xcodebuild -version | sed -n 1p
 echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
 
 step "Recompiling PsoV3.dol"
