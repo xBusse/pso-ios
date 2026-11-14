@@ -28,10 +28,12 @@ JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 CMAKE_BUILD_TYPE ?= Release
 BACKEND   ?= c
 TOOLCHAIN ?= auto
+USER_DIR  := $(CURDIR)/build/user
 RUN_ARGS  ?=
+PATCHES   := $(wildcard patches/moderngekko-*.patch)
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko submodules extract recompile run names clean clean-game
+.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names clean clean-game
 
 help:
 	@sed -n '4,9p' Makefile | sed 's/^# //'
@@ -47,7 +49,15 @@ dolrecomp: submodules
 	cmake -S $(DOLRECOMP_DIR) -B $(DOLRECOMP_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
 	cmake --build $(DOLRECOMP_BUILD) --target dolrecomp -j$(JOBS)
 
-moderngekko: submodules
+# Local fixes to ModernGekko (e.g. Metal as the Apple video backend). Each
+# patch is applied once; already-applied patches are skipped.
+patch-moderngekko: submodules
+	@for p in $(PATCHES); do \
+	  if git -C $(MODERNGEKKO_DIR) apply --reverse --check "$(CURDIR)/$$p" 2>/dev/null; then :; \
+	  else echo "Applying $$p"; git -C $(MODERNGEKKO_DIR) apply "$(CURDIR)/$$p" || exit 1; fi; \
+	done
+
+moderngekko: patch-moderngekko
 	cmake -S $(MODERNGEKKO_DIR) -B $(MODERNGEKKO_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
 	cmake --build $(MODERNGEKKO_BUILD) --target moderngekko-port -j$(JOBS)
 
@@ -75,8 +85,14 @@ extract: $(GAME_DIR)/sys/main.dol
 recompile: moderngekko extract
 	$(PORT_BIN) build $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR)
 
-run: moderngekko extract
-	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- $(RUN_ARGS)
+# Settings live in build/user so an existing Dolphin/ModernGekko setup on
+# the Mac (which may name Vulkan) isn't used.
+user-config:
+	@mkdir -p $(USER_DIR)
+	@test -f $(USER_DIR)/config.ini || printf 'resolution=1920x1080\nbackend=Metal\n' > $(USER_DIR)/config.ini
+
+run: moderngekko extract user-config
+	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- --user-dir $(USER_DIR) $(RUN_ARGS)
 
 names: submodules
 	@mkdir -p build

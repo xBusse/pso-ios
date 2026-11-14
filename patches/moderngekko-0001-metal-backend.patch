@@ -1,0 +1,50 @@
+diff --git a/tools/frontend_config.cpp b/tools/frontend_config.cpp
+index 03740d4..04ca32c 100644
+--- a/tools/frontend_config.cpp
++++ b/tools/frontend_config.cpp
+@@ -40,6 +40,10 @@ std::string NormalizeGraphicsBackend(std::string value) {
+     return "Vulkan";
+   if (lower == "opengl" || lower == "ogl")
+     return "OGL";
++#ifdef __APPLE__
++  if (lower == "metal")
++    return "Metal";
++#endif
+   return {};
+ }
+ 
+@@ -85,6 +89,9 @@ const std::vector<ResolutionOption> &SupportedResolutions() {
+ 
+ const std::vector<GraphicsBackendOption> &SupportedGraphicsBackends() {
+   static const std::vector<GraphicsBackendOption> backends = {
++#ifdef __APPLE__
++      {"Metal", "Metal"},
++#endif
+       {"Vulkan", "Vulkan"},
+       {"OpenGL", "OGL"},
+   };
+@@ -124,7 +131,7 @@ ConfigResult LoadConfig(const fs::path &user_directory,
+     else if (key == "backend" || key == "graphics_backend") {
+       config.graphics_backend = NormalizeGraphicsBackend(raw_value);
+       if (config.graphics_backend.empty())
+-        return {.error = "graphics backend must be Vulkan or OpenGL"};
++        return {.error = "graphics backend must be Metal, Vulkan or OpenGL"};
+     }
+     else if (key == "controller")
+       config.controller = raw_value;
+diff --git a/tools/frontend_config.hpp b/tools/frontend_config.hpp
+index 3b18d05..17e82c9 100644
+--- a/tools/frontend_config.hpp
++++ b/tools/frontend_config.hpp
+@@ -21,7 +21,11 @@ struct GraphicsBackendOption {
+ struct ConfigResult {
+   int dolphin_scale = 0;
+   std::string resolution;
++#ifdef __APPLE__
++  std::string graphics_backend = "Metal";
++#else
+   std::string graphics_backend = "Vulkan";
++#endif
+   std::string controller;
+   std::vector<std::string> controllers;
+   bool show_fps_in_title = true;
