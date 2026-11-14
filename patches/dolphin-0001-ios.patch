@@ -82,7 +82,7 @@ index e3581cc..ff23abc 100644
  #elif defined(_M_X86_64)
    m_fallback_jit = std::make_unique<Jit64>(m_system);
 diff --git a/Source/Core/InputCommon/CMakeLists.txt b/Source/Core/InputCommon/CMakeLists.txt
-index ddf8c30..3b29020 100644
+index ddf8c30..d4c83ea 100644
 --- a/Source/Core/InputCommon/CMakeLists.txt
 +++ b/Source/Core/InputCommon/CMakeLists.txt
 @@ -113,7 +113,7 @@ if(WIN32)
@@ -94,6 +94,15 @@ index ddf8c30..3b29020 100644
    target_sources(inputcommon PRIVATE
      ControllerInterface/Quartz/Quartz.h
      ControllerInterface/Quartz/Quartz.mm
+@@ -149,7 +149,7 @@ elseif(ANDROID)
+   )
+ endif()
+ 
+-if(NOT ANDROID)
++if(TARGET LibUSB::LibUSB)
+   target_link_libraries(inputcommon PUBLIC LibUSB::LibUSB)
+ endif()
+ 
 diff --git a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h b/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
 index 8f7f4ba..3f11a42 100644
 --- a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
@@ -107,6 +116,23 @@ index 8f7f4ba..3f11a42 100644
  #define CIFACE_USE_OSX
  #endif
  #if defined(HAVE_LIBEVDEV) && defined(HAVE_LIBUDEV)
+diff --git a/Source/Core/InputCommon/GCAdapter.cpp b/Source/Core/InputCommon/GCAdapter.cpp
+index 2b4f9bd..c1d3163 100644
+--- a/Source/Core/InputCommon/GCAdapter.cpp
++++ b/Source/Core/InputCommon/GCAdapter.cpp
+@@ -3,7 +3,11 @@
+ 
+ #include "InputCommon/GCAdapter.h"
+ 
+-#ifndef ANDROID
++#if defined(DOLPHIN_IOS)
++// No USB access on iOS: the GameCube adapter is never detected.
++#define GCADAPTER_USE_LIBUSB_IMPLEMENTATION false
++#define GCADAPTER_USE_ANDROID_IMPLEMENTATION false
++#elif !defined(ANDROID)
+ #define GCADAPTER_USE_LIBUSB_IMPLEMENTATION true
+ #define GCADAPTER_USE_ANDROID_IMPLEMENTATION false
+ #else
 diff --git a/Source/Core/UICommon/UICommon.cpp b/Source/Core/UICommon/UICommon.cpp
 index 01dc87b..2ff5b27 100644
 --- a/Source/Core/UICommon/UICommon.cpp
