@@ -73,8 +73,14 @@ set_target_properties(${PSO_MODULE_TARGET} PROPERTIES
 add_executable(PSO MACOSX_BUNDLE
   src/main.mm
   src/PlatformIOS.mm
+  src/DiscImport.mm
   src/GameViewController.mm
+  src/Menus.mm
+  src/PSOUI.mm
+  src/Settings.mm
   src/TouchControls.mm
+  src/TouchEditor.mm
+  ../mods/widescreen/widescreen.c
 )
 add_dependencies(PSO ${PSO_MODULE_TARGET})
 
@@ -95,6 +101,7 @@ target_compile_definitions(PSO PRIVATE _M_ARM_64=1 _ARCH_64=1
   PSO_MODULE_FILE="${PSO_MODULE_TARGET}.dylib")
 target_include_directories(PSO PRIVATE
   "${MG_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../mods/widescreen"
   "${DOLPHIN_DIR}/Source/Core"
   "${CMAKE_BINARY_DIR}/moderngekko/vendor/dolphin/Source/Core")
 
@@ -103,6 +110,7 @@ target_link_libraries(PSO PRIVATE
   core
   uicommon
   inputcommon
+  discio
   common
   "-framework UIKit"
   "-framework Metal"
@@ -112,7 +120,8 @@ target_link_libraries(PSO PRIVATE
   "-framework AudioToolbox"
   "-framework CoreAudio"
   "-framework CoreMotion"
-  "-framework UniformTypeIdentifiers")
+  "-framework UniformTypeIdentifiers"
+  "-framework CoreText")
 
 # Bundle layout: Dolphin's Sys data next to the executable, the game module in
 # Frameworks/ (the app loads it with dlopen).

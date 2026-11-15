@@ -43,6 +43,41 @@ typedef enum
 
 void PSOSetInput(PSOInput input, double value);
 void PSOClearInput(PSOInput input);
+// Releases every input, including a latched R.
+void PSOClearAllInputs(void);
+
+// R as a toggle: each press flips it on/off instead of holding it.
+void PSOSetRToggle(bool enabled);
+bool PSOIsRLatched(void);
+// Called on the main queue whenever the latched state changes.
+void PSOSetRLatchHandler(void (^handler)(bool latched));
+
+// Display: how the picture fits the screen.
+typedef enum
+{
+  PSODisplayOriginal = 0,  // 4:3, black bars at the sides
+  PSODisplayWidescreen,    // 16:9, wider view of the 3D scene
+  PSODisplayFill,          // the whole screen, wider view of the 3D scene
+  PSODisplayStretch,       // 4:3 picture stretched to the screen
+} PSODisplayMode;
+
+// Video and audio settings. Safe to call before the game starts (they're
+// applied when it boots) or while it runs (applied live).
+void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_height, int resolution_scale);
+void PSOSetVolume(int percent);
+// HUD size in percent of the game's own (status panel, action palette, radar).
+void PSOSetHUDScale(int percent);
+
+// Restarts audio output after an interruption (phone call, Siri, another app).
+void PSORestartAudio(void);
+
+bool PSOIsGameRunning(void);
+
+// Extracts a GameCube disc image (ISO, CISO, GCZ, RVZ, WIA) into `dest` in the
+// layout the game expects, checking it's the right game. `progress` (0..1) and
+// `done` run on the main queue; `error` is nil on success.
+void PSOExtractDisc(NSString* image_path, NSString* dest, void (^progress)(double fraction),
+                    void (^done)(NSString* error));
 
 #ifdef __cplusplus
 }

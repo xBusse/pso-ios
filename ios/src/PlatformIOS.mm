@@ -3,20 +3,29 @@
 
 #import "PSOHost.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 
+#include "AudioCommon/AudioCommon.h"
+#include "AudioCommon/SoundStream.h"
+#include "Common/Config/Config.h"
 #include "Common/WindowSystemInfo.h"
+#include "Core/Config/GraphicsSettings.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
 #include "InputCommon/ControllerInterface/Touch/InputOverrider.h"
+#include "VideoCommon/VideoConfig.h"
 #include "moderngekko/runtime.hpp"
+#include "pso_widescreen.h"
 
 namespace
 {
@@ -26,6 +35,87 @@ float s_scale = 1.0f;
 std::mutex s_runtime_mutex;
 moderngekko::Runtime* s_runtime = nullptr;
 std::atomic<bool> s_input_registered{false};
+std::atomic<bool> s_booted{false};
+
+// Settings, kept here so they can be (re)applied once the runtime exists.
+struct VideoSettings
+{
+  PSODisplayMode mode = PSODisplayFill;
+  int screen_width = 16;
+  int screen_height = 9;
+  int scale = 2;
+};
+std::mutex s_settings_mutex;
+VideoSettings s_video;
+int s_volume = 100;
+
+// R toggle state. Only touched on the main thread (touch + controller input).
+bool s_r_toggle = false;
+bool s_r_down = false;
+bool s_r_latched = false;
+void (^s_r_handler)(bool) = nil;
+
+void ApplySettingsNow()
+{
+  VideoSettings v;
+  int volume;
+  {
+    std::lock_guard lock(s_settings_mutex);
+    v = s_video;
+    volume = s_volume;
+  }
+  // Widening is done game-side by the widescreen mod (mods/widescreen): the
+  // 3D gets a wider projection, the 2D keeps its 4:3 layout with the HUD
+  // moved to the screen edges, and Dolphin stretches the 4:3 frame to the
+  // picture's aspect. Dolphin's own widescreen hack stays off: it also
+  // widened the shadow pass and the HUD.
+  Config::SetBase(Config::GFX_WIDESCREEN_HACK, false);
+  float picture_aspect = 4.0f / 3.0f;
+  switch (v.mode)
+  {
+  case PSODisplayOriginal: Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::ForceStandard); break;
+  case PSODisplayWidescreen:
+    Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::CustomStretch);
+    Config::SetBase(Config::GFX_CUSTOM_ASPECT_RATIO_WIDTH, 16);
+    Config::SetBase(Config::GFX_CUSTOM_ASPECT_RATIO_HEIGHT, 9);
+    picture_aspect = 16.0f / 9.0f;
+    break;
+  case PSODisplayFill:
+    Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::CustomStretch);
+    Config::SetBase(Config::GFX_CUSTOM_ASPECT_RATIO_WIDTH, std::max(1, v.screen_width));
+    Config::SetBase(Config::GFX_CUSTOM_ASPECT_RATIO_HEIGHT, std::max(1, v.screen_height));
+    picture_aspect = float(std::max(1, v.screen_width)) / float(std::max(1, v.screen_height));
+    break;
+  case PSODisplayStretch: Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::Stretch); break;
+  }
+  pso_widescreen_set_factor(picture_aspect / (4.0f / 3.0f));
+  Config::SetBase(Config::GFX_EFB_SCALE, std::clamp(v.scale, 1, 4));
+  Config::SetBase(Config::MAIN_AUDIO_VOLUME, std::clamp(volume, 0, 100));
+  if (s_booted)
+    AudioCommon::UpdateSoundStream(Core::System::GetInstance());
+}
+
+// Runs `job` on the host loop thread while the game is up, so Dolphin's state
+// is only touched from one place.
+void RunOnHost(std::function<void(Core::System&)> job)
+{
+  if (s_booted)
+    Core::QueueHostJob(std::move(job));
+}
+
+void SetRLatched(bool latched)
+{
+  if (s_r_latched == latched)
+    return;
+  s_r_latched = latched;
+  if (s_r_handler)
+  {
+    void (^handler)(bool) = s_r_handler;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      handler(latched);
+    });
+  }
+}
 
 class PlatformIOS final : public Platform
 {
@@ -141,6 +231,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     config.game_root = game;
     config.user_directory = user;
     config.module = moderngekko::ModuleSource::DynamicPath(module);
+    config.attached_mods.push_back(pso_widescreen_descriptor());
     config.graphics.backend = "Metal";
     config.show_fps_in_title = false;
 
@@ -158,6 +249,8 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
         ciface::Touch::ClearControlState(0, static_cast<ciface::Touch::ControlID>(id));
       ciface::Touch::RegisterGameCubeInputOverrider(0);
       s_input_registered = true;
+      ApplySettingsNow();
+      s_booted = true;
 
       {
         std::lock_guard lock(s_runtime_mutex);
@@ -172,6 +265,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
         s_runtime = nullptr;
       }
       s_input_registered = false;
+      s_booted = false;
       if (result.error)
         error = [NSString stringWithUTF8String:result.error->message.c_str()];
       created.runtime.reset();
@@ -204,10 +298,26 @@ void PSORequestStop(void)
     s_runtime->RequestStop();
 }
 
+static void SetTrigger(ciface::Touch::ControlID digital, ciface::Touch::ControlID analog, double value)
+{
+  ciface::Touch::SetControlState(0, digital, value > 0.5 ? 1.0 : 0.0);
+  ciface::Touch::SetControlState(0, analog, value);
+}
+
 void PSOSetInput(PSOInput input, double value)
 {
   if (!s_input_registered)
     return;
+  if (input == PSOInputR && s_r_toggle)
+  {
+    // Flip on each press (rising edge); hold the latched state otherwise.
+    const bool down = value > 0.5;
+    if (down && !s_r_down)
+      SetRLatched(!s_r_latched);
+    s_r_down = down;
+    SetTrigger(ciface::Touch::GCPAD_R_DIGITAL, ciface::Touch::GCPAD_R_ANALOG, s_r_latched ? 1.0 : 0.0);
+    return;
+  }
   ciface::Touch::SetControlState(0, ToControlID(input), value);
   // Triggers: drive the analog value with the digital press.
   if (input == PSOInputL)
@@ -220,9 +330,90 @@ void PSOClearInput(PSOInput input)
 {
   if (!s_input_registered)
     return;
+  if (input == PSOInputR && s_r_toggle)
+  {
+    s_r_down = false;  // releasing the button keeps the latched state
+    return;
+  }
   ciface::Touch::ClearControlState(0, ToControlID(input));
   if (input == PSOInputL)
     ciface::Touch::ClearControlState(0, ciface::Touch::GCPAD_L_ANALOG);
   else if (input == PSOInputR)
     ciface::Touch::ClearControlState(0, ciface::Touch::GCPAD_R_ANALOG);
+}
+
+void PSOClearAllInputs(void)
+{
+  s_r_down = false;
+  SetRLatched(false);
+  if (!s_input_registered)
+    return;
+  for (int id = ciface::Touch::FIRST_GC_CONTROL; id <= ciface::Touch::LAST_GC_CONTROL; ++id)
+    ciface::Touch::ClearControlState(0, static_cast<ciface::Touch::ControlID>(id));
+}
+
+void PSOSetRToggle(bool enabled)
+{
+  if (s_r_toggle == enabled)
+    return;
+  s_r_toggle = enabled;
+  s_r_down = false;
+  SetRLatched(false);
+  if (s_input_registered)
+  {
+    ciface::Touch::ClearControlState(0, ciface::Touch::GCPAD_R_DIGITAL);
+    ciface::Touch::ClearControlState(0, ciface::Touch::GCPAD_R_ANALOG);
+  }
+}
+
+bool PSOIsRLatched(void)
+{
+  return s_r_latched;
+}
+
+void PSOSetRLatchHandler(void (^handler)(bool latched))
+{
+  s_r_handler = [handler copy];
+}
+
+void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_height, int resolution_scale)
+{
+  {
+    std::lock_guard lock(s_settings_mutex);
+    s_video = {mode, screen_width, screen_height, resolution_scale};
+  }
+  RunOnHost([](Core::System&) { ApplySettingsNow(); });
+}
+
+void PSOSetHUDScale(int percent)
+{
+  pso_widescreen_set_hud_scale(std::clamp(percent, 25, 200) / 100.0f);
+}
+
+void PSOSetVolume(int percent)
+{
+  {
+    std::lock_guard lock(s_settings_mutex);
+    s_volume = percent;
+  }
+  RunOnHost([](Core::System&) { ApplySettingsNow(); });
+}
+
+void PSORestartAudio(void)
+{
+  RunOnHost([](Core::System& system) {
+    // After an interruption iOS has stopped the output unit behind Dolphin's
+    // back; Dolphin still thinks it's running. Stop and start it again.
+    SoundStream* stream = system.GetSoundStream();
+    if (!stream || !system.IsSoundStreamRunning())
+      return;
+    stream->SetRunning(false);
+    stream->SetRunning(true);
+    AudioCommon::UpdateSoundStream(system);
+  });
+}
+
+bool PSOIsGameRunning(void)
+{
+  return s_booted;
 }

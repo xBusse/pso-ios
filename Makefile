@@ -36,7 +36,7 @@ DOLPHIN_PATCHES := $(wildcard patches/dolphin-*.patch)
 DOLPHIN_DIR := $(MODERNGEKKO_DIR)/vendor/dolphin
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names ios clean clean-game
+.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names ios icon clean clean-game
 
 help:
 	@sed -n '4,10p' Makefile | sed 's/^# //'
@@ -93,13 +93,35 @@ user-config:
 	@mkdir -p $(USER_DIR)
 	@test -f $(USER_DIR)/config.ini || printf 'resolution=1920x1080\nbackend=Metal\n' > $(USER_DIR)/config.ini
 
-run: moderngekko extract user-config
+# Game-side widescreen mod (mods/widescreen). On the Mac it is off unless
+# PSO_WIDE is set (screen aspect / (4/3), e.g. PSO_WIDE=1.3333 for 16:9 with
+# the Stretch aspect mode); the iOS app links it in and sets it itself.
+WIDESCREEN_MOD := $(USER_DIR)/Mods/pso_widescreen.mgm.dylib
+$(WIDESCREEN_MOD): mods/widescreen/widescreen.c mods/widescreen/pso_widescreen.h
+	@mkdir -p $(dir $@)
+	cc -O2 -shared -fvisibility=hidden -DPSO_WIDESCREEN_DYLIB -I $(MODERNGEKKO_DIR)/include $< -o $@
+
+run: moderngekko extract user-config $(WIDESCREEN_MOD)
 	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- --user-dir $(USER_DIR) $(RUN_ARGS)
 
 # iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the
 # runtime, game module and app for the iOS SDK.
 ios: moderngekko extract
 	JOBS=$(JOBS) scripts/build-ios.sh
+
+# App icon. `make icon` redraws the default; `make icon ICON=path/to/image`
+# uses your own picture instead (center-cropped to a square). Rebuild with
+# `make ios` afterwards.
+icon:
+	@if [ -n "$(ICON)" ]; then \
+	  w=$$(sips -g pixelWidth "$(ICON)" | awk '/pixelWidth/{print $$2}'); \
+	  h=$$(sips -g pixelHeight "$(ICON)" | awk '/pixelHeight/{print $$2}'); \
+	  s=$$(( w < h ? w : h )); \
+	  sips -s format png -c $$s $$s "$(ICON)" --out ios/icon/AppIcon.png >/dev/null && \
+	  sips -z 1024 1024 ios/icon/AppIcon.png >/dev/null && echo "ios/icon/AppIcon.png updated from $(ICON)"; \
+	else \
+	  swift scripts/make-icon.swift ios/resources/fonts/Baloo2-SemiBold.ttf ios/icon/AppIcon.png; \
+	fi
 
 names: submodules
 	@mkdir -p build

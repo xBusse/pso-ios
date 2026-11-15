@@ -34,8 +34,29 @@ This builds the Mac tools if needed, recompiles `PsoV3.dol`, builds the runtime,
 iOS SDK, and writes `build/PSO-unsigned-<date>-<time>.ipa` (`build/PSO-unsigned.ipa` links to the newest). Sign
 and install it with your usual sideloading tool. If `iCloud Drive/pso-ios` exists, each new ipa is copied there too (`IPA_COPY_DIR=` to skip, or set another folder).
 
-The game files aren't in the app. Copy them over once: connect the iPhone, open it in Finder, go to **Files**,
-and drag `extracted/pso` onto **PSO**. Saves go to the app's `User` folder; `User/Logs` has `console.log` and `dolphin.log` for debugging.
+The game files aren't in the app. On the start screen, **Game Files → Import disc image** takes your ISO, CISO,
+GCZ or RVZ from Files or iCloud Drive and extracts it on the phone (it checks the game ID and the `PsoV3.dol`
+hash). This works with sideloading tools' "file picker fix", which only lets the picker hand over single files.
+You can also drop the image into On My iPhone → PSO and use **Use disc image in app folder**, or copy an
+`extracted/pso` folder there with Finder. Saves go to the app's `User` folder; `User/Logs` has `console.log`
+and `dolphin.log` for debugging.
+
+The app opens on a start screen (Play, Settings, Controls, Game Files), driven by touch or a controller
+(d-pad/stick, A, B). In game, the ≡ button at the top (or the controller's Options button) pauses and opens
+Resume / Settings / Edit touch controls / Quit. Settings:
+- **Display**: Fill screen (default; widens the 3D view to the whole screen and moves the HUD to its corners;
+  menus stay 4:3), Widescreen 16:9, Original 4:3, Stretch.
+- **HUD size** 50–150%: the HP/TP panel, action palette and radar, each kept in its corner.
+- **Resolution** 1x–4x (default 2x), **Volume**, **Silent mode** (whether the ring switch mutes the game).
+- **R button**: Hold, or Toggle (press once for the second action palette, again to go back).
+- **Touch controls**: Auto (hidden while a controller is connected), Always, Hidden; overall opacity.
+- **Edit touch layout**: drag any control; select one to change its size and opacity.
+
+Put `background.png` or `background.jpg` in the app's folder to replace the start screen background.
+
+App icon: `ios/icon/AppIcon.png` (1024×1024) goes into the app as an asset catalog. `make icon ICON=photo.png`
+replaces it with your own picture (center-cropped); plain `make icon` redraws the default
+(`scripts/make-icon.swift`). Then `make ios`. The menu font is Baloo 2 (SIL OFL, `ios/resources/fonts`).
 
 How iOS differs from the Mac build (patches in `patches/`, all behind `IOS` / `DOLPHIN_IOS`):
 - Video is Metal only; the app hands Dolphin a `CAMetalLayer` (`ios/src/PlatformIOS.mm`).
@@ -43,6 +64,13 @@ How iOS differs from the Mac build (patches in `patches/`, all behind `IOS` / `D
 - Audio goes through a RemoteIO AudioUnit (`AudioUnitStream`, `patches/dolphin-0002-ios-audio.patch`); Cubeb's
   CoreAudio code is macOS-only.
 - Input comes from the on-screen pad or a connected controller (Xbox/PlayStation/MFi).
+- Audio recovers from interruptions (calls, Siri): the session is reactivated and the output unit restarted.
+
+Widescreen is done game-side by a ModernGekko mod, `mods/widescreen/widescreen.c` (linked into the iOS app; on
+the Mac, `make run` builds it into `build/user/Mods` and `PSO_WIDE=1.3333` turns it on for 16:9 with the Stretch
+aspect mode). It widens only the GPU copy of the game's main 3D projection, so the game's 2D keeps its 4:3
+layout and shadow passes are untouched, and moves (and sizes, for HUD size) the status panel, action palette and radar at the screen's
+edges while they draw. Dolphin's widescreen hack isn't used: it also widened the shadows and squeezed the HUD.
 
 ## Status
 

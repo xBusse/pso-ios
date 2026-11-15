@@ -1,12 +1,14 @@
 #import "GameViewController.h"
 
-#import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <QuartzCore/CAMetalLayer.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#import "Menus.h"
 #import "PSOHost.h"
+#import "PSOUI.h"
+#import "Settings.h"
 #import "TouchControls.h"
+#import "TouchEditor.h"
 
 @interface PSOMetalView : UIView
 @end
@@ -18,17 +20,34 @@
 }
 @end
 
-@interface PSOGameViewController () <UIDocumentPickerDelegate>
-@end
+static __weak PSOGameViewController* s_current;
 
 @implementation PSOGameViewController
 {
   PSOMetalView* _metalView;
   PSOTouchControls* _touchControls;
+  UIButton* _menuButton;
   UILabel* _message;
-  UIButton* _importButton;
   BOOL _started;
-  BOOL _importing;
+  BOOL _menuOpen;
+  BOOL _stopped;
+  BOOL _quitting;
+}
+
++ (PSOGameViewController*)current
+{
+  return s_current;
+}
+
+- (instancetype)init
+{
+  if ((self = [super init]))
+  {
+    self.modalPresentationStyle = UIModalPresentationFullScreen;
+    self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+    s_current = self;
+  }
+  return self;
 }
 
 - (void)loadView
@@ -46,24 +65,26 @@
   _touchControls.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   [root addSubview:_touchControls];
 
-  _message = [[UILabel alloc] initWithFrame:CGRectInset(root.bounds, 40, 40)];
-  _message.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  _menuButton = [UIButton buttonWithType:UIButtonTypeCustom];
+  UIImageSymbolConfiguration* config = [UIImageSymbolConfiguration configurationWithPointSize:16
+                                                                                       weight:UIImageSymbolWeightBold];
+  [_menuButton setImage:[UIImage systemImageNamed:@"line.3.horizontal" withConfiguration:config]
+               forState:UIControlStateNormal];
+  _menuButton.tintColor = UIColor.whiteColor;
+  _menuButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+  _menuButton.layer.cornerRadius = 18;
+  _menuButton.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.6].CGColor;
+  _menuButton.layer.borderWidth = 1.5;
+  [_menuButton addTarget:self action:@selector(openMenu) forControlEvents:UIControlEventTouchUpInside];
+  [root addSubview:_menuButton];
+
+  _message = [UILabel new];
   _message.textColor = UIColor.whiteColor;
+  _message.font = PSOFont(20);
   _message.numberOfLines = 0;
   _message.textAlignment = NSTextAlignmentCenter;
   _message.hidden = YES;
   [root addSubview:_message];
-
-  _importButton = [UIButton buttonWithType:UIButtonTypeSystem];
-  [_importButton setTitle:@"Import game files…" forState:UIControlStateNormal];
-  _importButton.titleLabel.font = [UIFont boldSystemFontOfSize:20];
-  _importButton.frame = CGRectMake(0, 0, 260, 50);
-  _importButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
-                                   UIViewAutoresizingFlexibleTopMargin;
-  _importButton.center = CGPointMake(CGRectGetMidX(root.bounds), CGRectGetMaxY(root.bounds) - 60);
-  _importButton.hidden = YES;
-  [_importButton addTarget:self action:@selector(chooseGameFolder) forControlEvents:UIControlEventTouchUpInside];
-  [root addSubview:_importButton];
 
   self.view = root;
 }
@@ -72,16 +93,27 @@
 {
   [super viewDidLoad];
   NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
-  [center addObserver:self selector:@selector(controllersChanged) name:GCControllerDidConnectNotification object:nil];
-  [center addObserver:self selector:@selector(controllersChanged) name:GCControllerDidDisconnectNotification object:nil];
-  [self controllersChanged];
+  [center addObserver:self selector:@selector(updateOverlay) name:GCControllerDidConnectNotification object:nil];
+  [center addObserver:self selector:@selector(updateOverlay) name:GCControllerDidDisconnectNotification object:nil];
+  [center addObserver:self selector:@selector(updateOverlay) name:PSOSettingsDidChangeNotification object:nil];
+
+  __weak PSOGameViewController* weakSelf = self;
+  PSOPad.gameHandler = ^(GCExtendedGamepad* pad) {
+    [weakSelf padChanged:pad];
+  };
+  PSOPad.menuHandler = ^{
+    [weakSelf openMenu];
+  };
 }
 
-- (void)viewDidAppear:(BOOL)animated
+- (void)viewDidLayoutSubviews
 {
-  [super viewDidAppear:animated];
-  if (!_started)
-    [self startIfReady];
+  [super viewDidLayoutSubviews];
+  const CGRect b = self.view.bounds;
+  const UIEdgeInsets safe = self.view.safeAreaInsets;
+  _menuButton.frame = CGRectMake(CGRectGetMidX(b) - 18, MAX(safe.top, 6) + 4, 36, 36);
+  _message.frame = CGRectInset(b, 60, 40);
+  [self updateOverlay];
 }
 
 - (BOOL)prefersStatusBarHidden { return YES; }
@@ -89,210 +121,177 @@
 - (UIRectEdge)preferredScreenEdgesDeferringSystemGestures { return UIRectEdgeAll; }
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskLandscape; }
 
-- (NSString*)documentsDirectory
+- (void)updateOverlay
 {
-  return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+  BOOL showTouch = YES;
+  switch (PSOSettings.touchVisibility)
+  {
+  case PSOTouchVisibilityAuto: showTouch = !PSOPad.controllerConnected; break;
+  case PSOTouchVisibilityAlways: showTouch = YES; break;
+  case PSOTouchVisibilityNever: showTouch = NO; break;
+  }
+  const BOOL playing = _started && !_stopped && !_menuOpen;
+  if (_touchControls.hidden != !(showTouch && playing))
+  {
+    [_touchControls releaseAll];
+    _touchControls.hidden = !(showTouch && playing);
+  }
+  _menuButton.hidden = !playing;
+  _menuButton.alpha = MAX(0.3, MIN(1.0, PSOSettings.touchOpacity * 1.4));
 }
 
-- (void)showMessage:(NSString*)text
-{
-  _message.text = text;
-  _message.hidden = NO;
-  _touchControls.hidden = YES;
-  _importButton.hidden = YES;
-}
+// ---- Running the game ------------------------------------------------------------
 
-// ---- Game files ------------------------------------------------------------------
-
-+ (BOOL)isGameFolder:(NSURL*)url
+- (void)start
 {
-  NSFileManager* fm = NSFileManager.defaultManager;
-  return [fm fileExistsAtPath:[url URLByAppendingPathComponent:@"sys/main.dol"].path] &&
-         [fm fileExistsAtPath:[url URLByAppendingPathComponent:@"files/PsoV3.dol"].path];
-}
-
-- (void)chooseGameFolder
-{
-  // Some sideloading tools inject a "file picker fix" that forces asCopy:YES,
-  // which UIKit rejects for folders with an exception. Fall back to the older
-  // initializer, and failing that, point to the Files app instead of crashing.
-  UIDocumentPickerViewController* picker = nil;
-  @try
-  {
-    picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
-  }
-  @catch (NSException* e)
-  {
-    NSLog(@"PSO: folder picker failed (%@): %@", e.name, e.reason);
-    picker = nil;
-  }
-  if (!picker)
-  {
-    @try
-    {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.folder" ]
-                                                                       inMode:UIDocumentPickerModeOpen];
-#pragma clang diagnostic pop
-    }
-    @catch (NSException* e)
-    {
-      NSLog(@"PSO: legacy folder picker failed (%@): %@", e.name, e.reason);
-      picker = nil;
-    }
-  }
-  if (!picker)
-  {
-    [self showMissingFiles:@"This copy of the app can't open the folder picker (the sideloading tool's "
-                           @"file picker fix only allows single files). Turn that option off when signing, "
-                           @"or copy the game files in with the Files app as described below."];
+  if (_started)
     return;
-  }
-  picker.delegate = self;
-  picker.allowsMultipleSelection = NO;
-  [self presentViewController:picker animated:YES completion:nil];
-}
+  _started = YES;
+  [self loadViewIfNeeded];
+  [self.view layoutIfNeeded];
 
-- (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
-{
-  NSURL* picked = urls.firstObject;
-  if (!picked || _importing)
-    return;
-  _importing = YES;
-  [self showMessage:@"Copying game files…\n\nThis takes a few minutes (about 1.4 GB). Keep the app open."];
-
-  NSString* dest = [[self documentsDirectory] stringByAppendingPathComponent:@"pso"];
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    const BOOL scoped = [picked startAccessingSecurityScopedResource];
-    __block NSError* error = nil;
-    __block NSString* problem = nil;
-
-    // A coordinated read makes iCloud Drive download the folder first.
-    NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
-    NSError* coordError = nil;
-    [coordinator coordinateReadingItemAtURL:picked
-                                    options:0
-                                      error:&coordError
-                                 byAccessor:^(NSURL* url) {
-                                   // Accept either the pso folder itself or a folder that contains it.
-                                   NSURL* source = url;
-                                   if (![PSOGameViewController isGameFolder:source])
-                                     source = [url URLByAppendingPathComponent:@"pso"];
-                                   if (![PSOGameViewController isGameFolder:source])
-                                   {
-                                     problem = @"That folder doesn't look like the PSO game files. Pick the "
-                                               @"\"pso\" folder that has \"sys\" and \"files\" inside it.";
-                                     return;
-                                   }
-                                   NSFileManager* fm = NSFileManager.defaultManager;
-                                   [fm removeItemAtPath:dest error:nil];
-                                   NSError* copyError = nil;
-                                   if (![fm copyItemAtURL:source toURL:[NSURL fileURLWithPath:dest] error:&copyError])
-                                     error = copyError;
-                                 }];
-    if (scoped)
-      [picked stopAccessingSecurityScopedResource];
-    if (!problem && (coordError || error))
-      problem = [NSString stringWithFormat:@"Couldn't copy the game files: %@",
-                                           (error ?: coordError).localizedDescription];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-      self->_importing = NO;
-      if (problem)
-      {
-        [self showMissingFiles:problem];
-        return;
-      }
-      self->_message.hidden = YES;
-      [self controllersChanged];
-      [self startIfReady];
-    });
-  });
-}
-
-- (void)showMissingFiles:(NSString*)detail
-{
-  NSString* text = @"Game files not found.\n\nTap Import and pick the \"pso\" folder (from iCloud Drive or "
-                   @"anywhere in Files), or copy it into On My iPhone → PSO with the Files app or Finder.";
-  if (detail)
-    text = [detail stringByAppendingFormat:@"\n\n%@", text];
-  [self showMessage:text];
-  _importButton.hidden = NO;
-}
-
-- (void)startIfReady
-{
-  NSString* docs = [self documentsDirectory];
-  NSString* game = [docs stringByAppendingPathComponent:@"pso"];
-  NSString* user = [docs stringByAppendingPathComponent:@"User"];
-  NSFileManager* fm = NSFileManager.defaultManager;
-
-  if (![fm fileExistsAtPath:[game stringByAppendingPathComponent:@"sys/main.dol"]] ||
-      ![fm fileExistsAtPath:[game stringByAppendingPathComponent:@"files/PsoV3.dol"]])
-  {
-    [self showMissingFiles:nil];
-    return;
-  }
-  [fm createDirectoryAtPath:user withIntermediateDirectories:YES attributes:nil error:nil];
-
-  NSString* module = [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:@PSO_MODULE_FILE];
-
-  [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
-  [AVAudioSession.sharedInstance setActive:YES error:nil];
+  [PSOSettings applyAudioSession];
+  [PSOSettings applyToGameWithScreenSize:self.view.bounds.size];
   UIApplication.sharedApplication.idleTimerDisabled = YES;
 
   PSOSetRenderLayer((CAMetalLayer*)_metalView.layer, (float)UIScreen.mainScreen.nativeScale);
-  _started = YES;
   __weak PSOGameViewController* weakSelf = self;
-  PSOStartGame(game, user, module, ^(NSString* error) {
-    UIApplication.sharedApplication.idleTimerDisabled = NO;
-    [weakSelf showMessage:error ? error : @"The game has stopped. Reopen the app to play again."];
-  });
+  PSOStartGame(PSOGameDirectory(), PSOUserDirectory(),
+               [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:@PSO_MODULE_FILE],
+               ^(NSString* error) {
+                 [weakSelf gameStopped:error];
+               });
+  [self updateOverlay];
 }
 
-- (void)setPaused:(BOOL)paused
+- (void)gameStopped:(NSString*)error
 {
-  if (_started)
-    PSOSetPaused(paused);
+  _stopped = YES;
+  UIApplication.sharedApplication.idleTimerDisabled = NO;
+  if (_quitting && !error)
+    exit(0);  // only one game can run per launch, so Quit closes the app
+  if (self.presentedViewController)
+    [self dismissViewControllerAnimated:NO completion:nil];
+  _menuOpen = NO;
+  _message.text = error ? error : @"The game has stopped. Reopen the app to play again.";
+  _message.hidden = NO;
+  [self updateOverlay];
 }
 
-// ---- Hardware controllers ------------------------------------------------------
-
-- (void)controllersChanged
+- (void)appWillResignActive
 {
-  GCController* controller = nil;
-  for (GCController* c in GCController.controllers)
-  {
-    if (c.extendedGamepad)
-    {
-      controller = c;
-      break;
-    }
-  }
-  _touchControls.hidden = controller != nil || !_message.hidden;
-  if (!controller)
+  if (_started && !_stopped)
+    PSOSetPaused(true);
+}
+
+- (void)appDidBecomeActive
+{
+  [PSOSettings applyAudioSession];
+  if (_started && !_stopped && !_menuOpen)
+    PSOSetPaused(false);
+  PSORestartAudio();
+}
+
+// ---- In-game menu ------------------------------------------------------------------
+
+- (void)openMenu
+{
+  if (!_started || _stopped || _menuOpen)
     return;
+  _menuOpen = YES;
+  PSOClearAllInputs();
+  [_touchControls releaseAll];
+  PSOSetPaused(true);
+  [self updateOverlay];
 
-  controller.extendedGamepad.valueChangedHandler = ^(GCExtendedGamepad* pad, GCControllerElement*) {
-    PSOSetInput(PSOInputStickX, pad.leftThumbstick.xAxis.value);
-    PSOSetInput(PSOInputStickY, pad.leftThumbstick.yAxis.value);
-    PSOSetInput(PSOInputCStickX, pad.rightThumbstick.xAxis.value);
-    PSOSetInput(PSOInputCStickY, pad.rightThumbstick.yAxis.value);
-    PSOSetInput(PSOInputDpadUp, pad.dpad.up.isPressed);
-    PSOSetInput(PSOInputDpadDown, pad.dpad.down.isPressed);
-    PSOSetInput(PSOInputDpadLeft, pad.dpad.left.isPressed);
-    PSOSetInput(PSOInputDpadRight, pad.dpad.right.isPressed);
-    // Same physical layout as a GameCube pad: A bottom, B left, X right, Y top.
-    PSOSetInput(PSOInputA, pad.buttonA.isPressed);
-    PSOSetInput(PSOInputB, pad.buttonX.isPressed);
-    PSOSetInput(PSOInputX, pad.buttonB.isPressed);
-    PSOSetInput(PSOInputY, pad.buttonY.isPressed);
-    PSOSetInput(PSOInputL, pad.leftTrigger.value);
-    PSOSetInput(PSOInputR, pad.rightTrigger.value);
-    PSOSetInput(PSOInputZ, pad.rightShoulder.isPressed);
-    PSOSetInput(PSOInputStart, pad.buttonMenu.isPressed);
+  PSOPageViewController* menu = [PSOPageViewController new];
+  menu.overGame = YES;
+  menu.pageTitle = @"Paused";
+  __weak PSOGameViewController* weakSelf = self;
+  __weak PSOPageViewController* weakMenu = menu;
+  menu.onBack = ^{
+    [weakSelf closeMenu];
   };
+  menu.items = @[
+    [PSOMenuItem action:@"RESUME" help:nil run:^{
+      [weakSelf closeMenu];
+    }],
+    [PSOMenuItem action:@"SETTINGS" help:@"Display, sound, R button, touch controls."
+                    run:^{
+                      [weakMenu showPage:PSOMakeSettingsPage(YES)];
+                    }],
+    [PSOMenuItem action:@"EDIT TOUCH CONTROLS" help:@"Move, resize and fade the on-screen buttons."
+                    run:^{
+                      PSOTouchEditorViewController* editor = [PSOTouchEditorViewController new];
+                      editor.overGame = YES;
+                      editor.onDone = ^{
+                        weakMenu.view.alpha = 1;
+                      };
+                      [weakMenu presentViewController:editor animated:YES completion:^{
+                        weakMenu.view.alpha = 0;
+                      }];
+                    }],
+    [PSOMenuItem action:@"QUIT GAME" help:@"Stops the game and closes the app. Save in the game first."
+                    run:^{
+                      [weakSelf confirmQuitFrom:weakMenu];
+                    }],
+  ];
+  [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)closeMenu
+{
+  if (!_menuOpen)
+    return;
+  [self dismissViewControllerAnimated:YES completion:^{
+    self->_menuOpen = NO;
+    if (!self->_stopped)
+      PSOSetPaused(false);
+    [self updateOverlay];
+  }];
+}
+
+- (void)confirmQuitFrom:(UIViewController*)presenter
+{
+  UIAlertController* alert =
+      [UIAlertController alertControllerWithTitle:@"Quit the game?"
+                                          message:@"Anything since your last save in the game is lost. The app "
+                                                  @"closes; open it again to play."
+                                   preferredStyle:UIAlertControllerStyleAlert];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Quit"
+                                            style:UIAlertActionStyleDestructive
+                                          handler:^(UIAlertAction*) {
+                                            self->_quitting = YES;
+                                            PSOSetPaused(false);
+                                            PSORequestStop();
+                                          }]];
+  [presenter presentViewController:alert animated:YES completion:nil];
+}
+
+// ---- Controllers -----------------------------------------------------------------
+
+- (void)padChanged:(GCExtendedGamepad*)pad
+{
+  if (!_started || _stopped || _menuOpen)
+    return;
+  PSOSetInput(PSOInputStickX, pad.leftThumbstick.xAxis.value);
+  PSOSetInput(PSOInputStickY, pad.leftThumbstick.yAxis.value);
+  PSOSetInput(PSOInputCStickX, pad.rightThumbstick.xAxis.value);
+  PSOSetInput(PSOInputCStickY, pad.rightThumbstick.yAxis.value);
+  PSOSetInput(PSOInputDpadUp, pad.dpad.up.isPressed);
+  PSOSetInput(PSOInputDpadDown, pad.dpad.down.isPressed);
+  PSOSetInput(PSOInputDpadLeft, pad.dpad.left.isPressed);
+  PSOSetInput(PSOInputDpadRight, pad.dpad.right.isPressed);
+  // Same physical layout as a GameCube pad: A bottom, B left, X right, Y top.
+  PSOSetInput(PSOInputA, pad.buttonA.isPressed);
+  PSOSetInput(PSOInputB, pad.buttonX.isPressed);
+  PSOSetInput(PSOInputX, pad.buttonB.isPressed);
+  PSOSetInput(PSOInputY, pad.buttonY.isPressed);
+  PSOSetInput(PSOInputL, pad.leftTrigger.value);
+  PSOSetInput(PSOInputR, pad.rightTrigger.value);
+  PSOSetInput(PSOInputZ, pad.rightShoulder.isPressed);
+  PSOSetInput(PSOInputStart, pad.buttonMenu.isPressed);
 }
 
 @end

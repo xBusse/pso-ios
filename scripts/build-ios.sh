@@ -59,6 +59,13 @@ step "Building"
 cmake --build "$CMAKE_BUILD" --target PSO -j"$JOBS" -- -k 0
 
 APP="$CMAKE_BUILD/PSO.app"
+step "Resources"
+# Menu font (SIL OFL, license alongside) and the app icon (ios/icon/AppIcon.png;
+# `make icon ICON=your.png` replaces it).
+mkdir -p "$APP/fonts"
+cp ios/resources/fonts/* "$APP/fonts/"
+scripts/ios-icon.sh ios/icon/AppIcon.png "$APP" "$OUT/icon"
+
 step "Packaging"
 # Ad-hoc signatures only; sign for your device with your usual sideloading tool.
 codesign --force --sign - "$APP"/Frameworks/*.dylib

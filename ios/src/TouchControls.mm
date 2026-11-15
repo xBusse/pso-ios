@@ -1,6 +1,7 @@
 #import "TouchControls.h"
 
 #import "PSOHost.h"
+#import "Settings.h"
 
 #include <cmath>
 #include <vector>
@@ -17,17 +18,16 @@ enum class Kind
 struct Control
 {
   Kind kind;
-  PSOInput input;  // the button's input (Button only)
+  PSOInput input;    // the button's input (Button only)
+  NSString* ident;   // key in the saved layout
   NSString* label;
   CGPoint center;
   CGFloat radius;
+  CGFloat alpha = 1;  // per-control opacity (times the global one)
   CAShapeLayer* base = nil;
   CAShapeLayer* knob = nil;  // Stick only
   CATextLayer* text = nil;
 };
-
-constexpr CGFloat kIdleAlpha = 0.35;
-constexpr CGFloat kPressedAlpha = 0.7;
 }  // namespace
 
 @implementation PSOTouchControls
@@ -35,6 +35,10 @@ constexpr CGFloat kPressedAlpha = 0.7;
   std::vector<Control> _controls;
   // Which control each active touch is driving.
   NSMapTable<UITouch*, NSNumber*>* _touchControl;
+  CGFloat _opacity;
+  int _selected;
+  CGPoint _dragOffset;
+  BOOL _rLatched;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -44,21 +48,22 @@ constexpr CGFloat kPressedAlpha = 0.7;
     self.multipleTouchEnabled = YES;
     self.backgroundColor = UIColor.clearColor;
     _touchControl = [NSMapTable weakToStrongObjectsMapTable];
+    _selected = -1;
 
-    auto add = [&](Kind kind, PSOInput input, NSString* label) {
-      Control c{kind, input, label, CGPointZero, 0};
+    auto add = [&](Kind kind, PSOInput input, NSString* ident, NSString* label) {
+      Control c{kind, input, ident, label, CGPointZero, 0};
       _controls.push_back(c);
     };
-    add(Kind::Stick, PSOInputStickX, @"");
-    add(Kind::Dpad, PSOInputDpadUp, @"+");
-    add(Kind::Button, PSOInputA, @"A");
-    add(Kind::Button, PSOInputB, @"B");
-    add(Kind::Button, PSOInputX, @"X");
-    add(Kind::Button, PSOInputY, @"Y");
-    add(Kind::Button, PSOInputL, @"L");
-    add(Kind::Button, PSOInputR, @"R");
-    add(Kind::Button, PSOInputZ, @"Z");
-    add(Kind::Button, PSOInputStart, @"START");
+    add(Kind::Stick, PSOInputStickX, @"stick", @"");
+    add(Kind::Dpad, PSOInputDpadUp, @"dpad", @"✚");
+    add(Kind::Button, PSOInputA, @"A", @"A");
+    add(Kind::Button, PSOInputB, @"B", @"B");
+    add(Kind::Button, PSOInputX, @"X", @"X");
+    add(Kind::Button, PSOInputY, @"Y", @"Y");
+    add(Kind::Button, PSOInputL, @"L", @"L");
+    add(Kind::Button, PSOInputR, @"R", @"R");
+    add(Kind::Button, PSOInputZ, @"Z", @"Z");
+    add(Kind::Button, PSOInputStart, @"START", @"START");
 
     for (Control& c : _controls)
     {
@@ -66,13 +71,11 @@ constexpr CGFloat kPressedAlpha = 0.7;
       c.base.fillColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
       c.base.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.8].CGColor;
       c.base.lineWidth = 2;
-      c.base.opacity = kIdleAlpha;
       [self.layer addSublayer:c.base];
       if (c.kind == Kind::Stick)
       {
         c.knob = [CAShapeLayer layer];
         c.knob.fillColor = [UIColor colorWithWhite:1.0 alpha:0.6].CGColor;
-        c.knob.opacity = kIdleAlpha;
         [self.layer addSublayer:c.knob];
       }
       c.text = [CATextLayer layer];
@@ -80,56 +83,123 @@ constexpr CGFloat kPressedAlpha = 0.7;
       c.text.alignmentMode = kCAAlignmentCenter;
       c.text.foregroundColor = UIColor.whiteColor.CGColor;
       c.text.contentsScale = UIScreen.mainScreen.scale;
-      c.text.opacity = 0.8;
       [self.layer addSublayer:c.text];
     }
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(settingsChanged)
+                                               name:PSOSettingsDidChangeNotification
+                                             object:nil];
+    _opacity = PSOSettings.touchOpacity;
   }
   return self;
+}
+
+- (void)dealloc
+{
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)settingsChanged
+{
+  _opacity = PSOSettings.touchOpacity;
+  [self setNeedsLayout];
+}
+
+- (void)setRLatched:(BOOL)latched
+{
+  _rLatched = latched;
+  for (Control& c : _controls)
+    if (c.kind == Kind::Button && c.input == PSOInputR)
+      [self setPressed:c pressed:NO];
+}
+
+// ---- Layout ------------------------------------------------------------------
+
+- (CGRect)safeRect
+{
+  return UIEdgeInsetsInsetRect(self.bounds, self.safeAreaInsets);
+}
+
+- (CGFloat)unit
+{
+  return MIN(self.bounds.size.height / 8.0, 56.0);
+}
+
+// Where each control goes before the user's changes.
+- (void)defaultPlacement:(Control&)c
+{
+  const CGRect safe = [self safeRect];
+  const CGFloat u = [self unit];
+  const CGFloat left = CGRectGetMinX(safe) + u * 0.4;
+  const CGFloat right = CGRectGetMaxX(safe) - u * 0.4;
+  const CGFloat top = CGRectGetMinY(safe);
+  const CGFloat bottom = CGRectGetMaxY(safe);
+  const CGPoint face = CGPointMake(right - 2.2 * u, bottom - 2.5 * u);
+
+  switch (c.kind)
+  {
+  case Kind::Stick: c.center = CGPointMake(left + 1.8 * u, bottom - 2.0 * u); c.radius = 1.5 * u; break;
+  case Kind::Dpad: c.center = CGPointMake(left + 1.8 * u, bottom - 5.4 * u); c.radius = 1.1 * u; break;
+  case Kind::Button:
+    switch (c.input)
+    {
+    case PSOInputA: c.center = face; c.radius = 0.75 * u; break;
+    case PSOInputB: c.center = CGPointMake(face.x - 1.45 * u, face.y + 0.85 * u); c.radius = 0.5 * u; break;
+    case PSOInputX: c.center = CGPointMake(face.x + 1.4 * u, face.y - 0.45 * u); c.radius = 0.55 * u; break;
+    case PSOInputY: c.center = CGPointMake(face.x - 0.35 * u, face.y - 1.45 * u); c.radius = 0.55 * u; break;
+    case PSOInputL: c.center = CGPointMake(left + 1.2 * u, top + 0.9 * u); c.radius = 0.6 * u; break;
+    case PSOInputR: c.center = CGPointMake(right - 1.2 * u, top + 0.9 * u); c.radius = 0.6 * u; break;
+    case PSOInputZ: c.center = CGPointMake(right - 2.7 * u, top + 0.9 * u); c.radius = 0.5 * u; break;
+    case PSOInputStart: c.center = CGPointMake(CGRectGetMidX(safe), bottom - 0.6 * u); c.radius = 0.45 * u; break;
+    default: break;
+    }
+    break;
+  }
+  c.alpha = 1;
+}
+
+- (void)placeControl:(Control&)c
+{
+  [self defaultPlacement:c];
+  NSDictionary* o = PSOSettings.touchLayout[c.ident];
+  if (![o isKindOfClass:NSDictionary.class])
+    return;
+  const CGRect safe = [self safeRect];
+  if (o[@"x"] && o[@"y"])
+  {
+    c.center = CGPointMake(CGRectGetMinX(safe) + [o[@"x"] doubleValue] * safe.size.width,
+                           CGRectGetMinY(safe) + [o[@"y"] doubleValue] * safe.size.height);
+  }
+  if (o[@"scale"])
+    c.radius *= MAX(0.5, MIN(2.0, [o[@"scale"] doubleValue]));
+  if (o[@"opacity"])
+    c.alpha = MAX(0.0, MIN(1.0, [o[@"opacity"] doubleValue]));
 }
 
 - (void)layoutSubviews
 {
   [super layoutSubviews];
-  const CGRect safe = UIEdgeInsetsInsetRect(self.bounds, self.safeAreaInsets);
-  const CGFloat h = self.bounds.size.height;
-  const CGFloat u = MIN(h / 8.0, 56.0);
-  const CGFloat left = CGRectGetMinX(safe) + u * 0.4;
-  const CGFloat right = CGRectGetMaxX(safe) - u * 0.4;
-  const CGFloat bottom = CGRectGetMaxY(safe);
-  const CGPoint face = CGPointMake(right - 2.2 * u, bottom - 2.5 * u);
-
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
   for (Control& c : _controls)
   {
-    switch (c.kind)
-    {
-    case Kind::Stick: c.center = CGPointMake(left + 1.8 * u, bottom - 2.0 * u); c.radius = 1.5 * u; break;
-    case Kind::Dpad: c.center = CGPointMake(left + 1.8 * u, bottom - 5.4 * u); c.radius = 1.1 * u; break;
-    case Kind::Button:
-      switch (c.input)
-      {
-      case PSOInputA: c.center = face; c.radius = 0.75 * u; break;
-      case PSOInputB: c.center = CGPointMake(face.x - 1.45 * u, face.y + 0.85 * u); c.radius = 0.5 * u; break;
-      case PSOInputX: c.center = CGPointMake(face.x + 1.4 * u, face.y - 0.45 * u); c.radius = 0.55 * u; break;
-      case PSOInputY: c.center = CGPointMake(face.x - 0.35 * u, face.y - 1.45 * u); c.radius = 0.55 * u; break;
-      case PSOInputL: c.center = CGPointMake(left + 1.2 * u, CGRectGetMinY(safe) + 0.9 * u); c.radius = 0.6 * u; break;
-      case PSOInputR: c.center = CGPointMake(right - 1.2 * u, CGRectGetMinY(safe) + 0.9 * u); c.radius = 0.6 * u; break;
-      case PSOInputZ: c.center = CGPointMake(right - 2.7 * u, CGRectGetMinY(safe) + 0.9 * u); c.radius = 0.5 * u; break;
-      case PSOInputStart: c.center = CGPointMake(CGRectGetMidX(safe), CGRectGetMinY(safe) + 0.6 * u); c.radius = 0.45 * u; break;
-      default: break;
-      }
-      break;
-    }
-
-    const CGRect box = CGRectMake(c.center.x - c.radius, c.center.y - c.radius, 2 * c.radius, 2 * c.radius);
-    c.base.path = (c.kind == Kind::Dpad)
-                      ? [UIBezierPath bezierPathWithRoundedRect:box cornerRadius:c.radius * 0.3].CGPath
-                      : [UIBezierPath bezierPathWithOvalInRect:box].CGPath;
-    if (c.knob)
-      [self placeKnob:c offset:CGPointZero];
-    const CGFloat font = (c.input == PSOInputStart) ? c.radius * 0.5 : c.radius * 0.8;
-    c.text.fontSize = font;
-    c.text.frame = CGRectMake(c.center.x - c.radius, c.center.y - font * 0.6, 2 * c.radius, font * 1.3);
+    [self placeControl:c];
+    [self drawControl:c];
   }
+  [CATransaction commit];
+}
+
+- (void)drawControl:(Control&)c
+{
+  const CGRect box = CGRectMake(c.center.x - c.radius, c.center.y - c.radius, 2 * c.radius, 2 * c.radius);
+  c.base.path = (c.kind == Kind::Dpad) ? [UIBezierPath bezierPathWithRoundedRect:box cornerRadius:c.radius * 0.3].CGPath
+                                       : [UIBezierPath bezierPathWithOvalInRect:box].CGPath;
+  if (c.knob)
+    [self placeKnob:c offset:CGPointZero];
+  const CGFloat font = (c.input == PSOInputStart && c.kind == Kind::Button) ? c.radius * 0.5 : c.radius * 0.8;
+  c.text.fontSize = font;
+  c.text.frame = CGRectMake(c.center.x - c.radius, c.center.y - font * 0.6, 2 * c.radius, font * 1.3);
+  [self setPressed:c pressed:NO];
 }
 
 - (void)placeKnob:(Control&)c offset:(CGPoint)offset
@@ -142,6 +212,28 @@ constexpr CGFloat kPressedAlpha = 0.7;
   [CATransaction commit];
 }
 
+- (void)setPressed:(Control&)c pressed:(BOOL)pressed
+{
+  const BOOL selected = self.editing && &c == (_selected >= 0 ? &_controls[_selected] : nullptr);
+  const BOOL latched = _rLatched && c.kind == Kind::Button && c.input == PSOInputR;
+  CGFloat idle = _opacity * c.alpha;
+  if (self.editing)
+    idle = MAX(idle, 0.25);  // never invisible while editing
+  const CGFloat lit = MIN(1.0, MAX(idle * 2.0, idle + 0.3));
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  c.base.opacity = (pressed || latched) ? lit : idle;
+  if (c.knob)
+    c.knob.opacity = pressed ? lit : idle;
+  c.text.opacity = MIN(1.0, ((pressed || latched) ? lit : idle) * 2.0);
+  UIColor* gold = [UIColor colorWithRed:1 green:0.8 blue:0.3 alpha:1];
+  c.base.strokeColor = (selected || latched) ? gold.CGColor : [UIColor colorWithWhite:1 alpha:0.8].CGColor;
+  c.base.fillColor = latched ? [gold colorWithAlphaComponent:0.45].CGColor
+                             : [UIColor colorWithWhite:1 alpha:0.25].CGColor;
+  c.base.lineWidth = selected ? 3 : 2;
+  [CATransaction commit];
+}
+
 - (int)controlAt:(CGPoint)p
 {
   int best = -1;
@@ -150,7 +242,7 @@ constexpr CGFloat kPressedAlpha = 0.7;
   {
     const Control& c = _controls[i];
     // Generous hit areas: sticks grab anything nearby.
-    const CGFloat reach = c.radius * (c.kind == Kind::Button ? 1.25 : 1.6);
+    const CGFloat reach = self.editing ? MAX(c.radius, 22) : c.radius * (c.kind == Kind::Button ? 1.25 : 1.6);
     const CGFloat d = std::hypot(p.x - c.center.x, p.y - c.center.y);
     if (d <= reach && d / reach < best_d)
     {
@@ -161,14 +253,18 @@ constexpr CGFloat kPressedAlpha = 0.7;
   return best;
 }
 
-- (void)setPressed:(Control&)c pressed:(BOOL)pressed
+// ---- Playing -------------------------------------------------------------------
+
+- (void)didMoveToWindow
 {
-  [CATransaction begin];
-  [CATransaction setDisableActions:YES];
-  c.base.opacity = pressed ? kPressedAlpha : kIdleAlpha;
-  if (c.knob)
-    c.knob.opacity = pressed ? kPressedAlpha : kIdleAlpha;
-  [CATransaction commit];
+  [super didMoveToWindow];
+  if (self.window && !self.editing)
+  {
+    __weak PSOTouchControls* weakSelf = self;
+    PSOSetRLatchHandler(^(bool latched) {
+      [weakSelf setRLatched:latched];
+    });
+  }
 }
 
 - (void)updateStick:(Control&)c touch:(UITouch*)touch
@@ -223,8 +319,151 @@ constexpr CGFloat kPressedAlpha = 0.7;
   [self setPressed:c pressed:NO];
 }
 
+- (void)releaseAll
+{
+  for (UITouch* touch in _touchControl.keyEnumerator.allObjects)
+  {
+    NSNumber* index = [_touchControl objectForKey:touch];
+    if (index && !self.editing)
+      [self releaseControl:_controls[index.intValue]];
+  }
+  [_touchControl removeAllObjects];
+}
+
+// ---- Editing --------------------------------------------------------------------
+
+- (void)setEditing:(BOOL)editing
+{
+  [self releaseAll];
+  _editing = editing;
+  _selected = -1;
+  [self setNeedsLayout];
+}
+
+- (void)selectControl:(int)index
+{
+  _selected = index;
+  for (Control& c : _controls)
+    [self setPressed:c pressed:NO];
+  if (self.selectionChanged)
+    self.selectionChanged();
+}
+
+- (NSString*)selectedName
+{
+  if (_selected < 0)
+    return nil;
+  const Control& c = _controls[_selected];
+  switch (c.kind)
+  {
+  case Kind::Stick: return @"Stick";
+  case Kind::Dpad: return @"D-pad";
+  case Kind::Button: return c.input == PSOInputStart ? @"Start" : c.ident;
+  }
+  return nil;
+}
+
+- (NSMutableDictionary*)overrideFor:(const Control&)c layout:(NSMutableDictionary*)layout
+{
+  NSMutableDictionary* o = [layout[c.ident] mutableCopy] ?: [NSMutableDictionary dictionary];
+  layout[c.ident] = o;
+  return o;
+}
+
+- (void)saveSelected:(void (^)(NSMutableDictionary* o))change
+{
+  if (_selected < 0)
+    return;
+  NSMutableDictionary* layout = [PSOSettings.touchLayout mutableCopy];
+  NSMutableDictionary* o = [self overrideFor:_controls[_selected] layout:layout];
+  change(o);
+  PSOSettings.touchLayout = layout;  // posts the change; layout follows
+}
+
+- (CGFloat)selectedScale
+{
+  if (_selected < 0)
+    return 1;
+  NSNumber* v = PSOSettings.touchLayout[_controls[_selected].ident][@"scale"];
+  return v ? v.doubleValue : 1;
+}
+
+- (void)setSelectedScale:(CGFloat)scale
+{
+  [self saveSelected:^(NSMutableDictionary* o) {
+    o[@"scale"] = @(MAX(0.5, MIN(2.0, scale)));
+  }];
+}
+
+- (CGFloat)selectedOpacity
+{
+  return _selected < 0 ? 1 : _controls[_selected].alpha;
+}
+
+- (void)setSelectedOpacity:(CGFloat)opacity
+{
+  [self saveSelected:^(NSMutableDictionary* o) {
+    o[@"opacity"] = @(MAX(0.0, MIN(1.0, opacity)));
+  }];
+}
+
+- (void)resetSelected
+{
+  if (_selected < 0)
+    return;
+  NSMutableDictionary* layout = [PSOSettings.touchLayout mutableCopy];
+  [layout removeObjectForKey:_controls[_selected].ident];
+  PSOSettings.touchLayout = layout;
+  if (self.selectionChanged)
+    self.selectionChanged();
+}
+
+- (void)resetAll
+{
+  PSOSettings.touchLayout = @{};
+  if (self.selectionChanged)
+    self.selectionChanged();
+}
+
+- (void)moveSelectedTo:(CGPoint)p
+{
+  Control& c = _controls[_selected];
+  const CGRect b = self.bounds;
+  c.center = CGPointMake(MAX(CGRectGetMinX(b) + c.radius * 0.5, MIN(CGRectGetMaxX(b) - c.radius * 0.5, p.x)),
+                         MAX(CGRectGetMinY(b) + c.radius * 0.5, MIN(CGRectGetMaxY(b) - c.radius * 0.5, p.y)));
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  [self drawControl:c];
+  [CATransaction commit];
+}
+
+- (void)saveSelectedPosition
+{
+  const CGRect safe = [self safeRect];
+  const CGPoint p = _controls[_selected].center;
+  [self saveSelected:^(NSMutableDictionary* o) {
+    o[@"x"] = @((p.x - CGRectGetMinX(safe)) / safe.size.width);
+    o[@"y"] = @((p.y - CGRectGetMinY(safe)) / safe.size.height);
+  }];
+}
+
+// ---- Touches ---------------------------------------------------------------------
+
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
 {
+  if (self.editing)
+  {
+    UITouch* touch = touches.anyObject;
+    const CGPoint p = [touch locationInView:self];
+    const int index = [self controlAt:p];
+    [self selectControl:index];
+    if (index >= 0)
+    {
+      _dragOffset = CGPointMake(_controls[index].center.x - p.x, _controls[index].center.y - p.y);
+      [_touchControl setObject:@(index) forKey:touch];
+    }
+    return;
+  }
   for (UITouch* touch in touches)
   {
     const int index = [self controlAt:[touch locationInView:self]];
@@ -249,6 +488,12 @@ constexpr CGFloat kPressedAlpha = 0.7;
     NSNumber* index = [_touchControl objectForKey:touch];
     if (!index)
       continue;
+    if (self.editing)
+    {
+      const CGPoint p = [touch locationInView:self];
+      [self moveSelectedTo:CGPointMake(p.x + _dragOffset.x, p.y + _dragOffset.y)];
+      continue;
+    }
     Control& c = _controls[index.intValue];
     if (c.kind == Kind::Stick)
       [self updateStick:c touch:touch];
@@ -265,6 +510,12 @@ constexpr CGFloat kPressedAlpha = 0.7;
     if (!index)
       continue;
     [_touchControl removeObjectForKey:touch];
+    if (self.editing)
+    {
+      if (_selected == index.intValue)
+        [self saveSelectedPosition];
+      continue;
+    }
     [self releaseControl:_controls[index.intValue]];
   }
 }
