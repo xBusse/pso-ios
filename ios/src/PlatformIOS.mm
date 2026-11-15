@@ -4,6 +4,7 @@
 #import "PSOHost.h"
 
 #include <atomic>
+#include <cstdio>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -55,6 +56,36 @@ public:
   }
 };
 
+// Diagnostics the user can read from the Files app (On My iPhone > PSO > User > Logs):
+// console.log gets stdout/stderr (the static-recomp core prints there), and
+// Dolphin's own log goes to dolphin.log. Logger.ini is only written if missing,
+// so it can be edited on the device.
+void SetUpLogging(NSString* user_dir)
+{
+  NSFileManager* fm = NSFileManager.defaultManager;
+  NSString* logs = [user_dir stringByAppendingPathComponent:@"Logs"];
+  NSString* config = [user_dir stringByAppendingPathComponent:@"Config"];
+  [fm createDirectoryAtPath:logs withIntermediateDirectories:YES attributes:nil error:nil];
+  [fm createDirectoryAtPath:config withIntermediateDirectories:YES attributes:nil error:nil];
+
+  const char* console = [logs stringByAppendingPathComponent:@"console.log"].fileSystemRepresentation;
+  if (freopen(console, "w", stdout))
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+  if (freopen(console, "a", stderr))
+    setvbuf(stderr, nullptr, _IONBF, 0);
+
+  NSString* ini = [config stringByAppendingPathComponent:@"Logger.ini"];
+  if (![fm fileExistsAtPath:ini])
+  {
+    // Verbosity 4 = info. Types are Dolphin's short log names.
+    NSString* text = @"[Options]\nWriteToFile = True\nWriteToConsole = True\nVerbosity = 4\n"
+                     @"[Logs]\nBOOT = True\nCOMMON = True\nCORE = True\nDVD = True\nMI = True\n"
+                     @"OSREPORT = True\nOSREPORT_HLE = True\nPowerPC = True\nVideo = True\n"
+                     @"Host GPU = True\nAudio = True\nMASTER = True\n";
+    [text writeToFile:ini atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }
+}
+
 ciface::Touch::ControlID ToControlID(PSOInput input)
 {
   using namespace ciface::Touch;
@@ -95,6 +126,12 @@ void PSOSetRenderLayer(CAMetalLayer* layer, float scale)
 void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
                   void (^on_exit)(NSString* error))
 {
+  SetUpLogging(user_dir);
+  printf("PSO: game=%s user=%s module=%s\n", game_dir.UTF8String, user_dir.UTF8String,
+         module_path.UTF8String);
+  printf("PSO: layer bounds=%.0fx%.0f scale=%.1f\n", s_layer.bounds.size.width,
+         s_layer.bounds.size.height, s_scale);
+
   const std::string game = game_dir.UTF8String;
   const std::string user = user_dir.UTF8String;
   const std::string module = module_path.UTF8String;
@@ -108,6 +145,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     config.show_fps_in_title = false;
 
     NSString* error = nil;
+    printf("PSO: creating runtime\n");
     auto created = moderngekko::Runtime::Create(std::move(config));
     if (!created)
     {
@@ -125,7 +163,10 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
         std::lock_guard lock(s_runtime_mutex);
         s_runtime = created.runtime.get();
       }
+      printf("PSO: runtime created, running\n");
       const moderngekko::RuntimeRunResult result = created.runtime->Run();
+      printf("PSO: runtime returned%s%s\n", result.error ? ": " : "",
+             result.error ? result.error->message.c_str() : "");
       {
         std::lock_guard lock(s_runtime_mutex);
         s_runtime = nullptr;

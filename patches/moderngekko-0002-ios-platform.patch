@@ -27,7 +27,7 @@ index 1cbef59..d03ad97 100644
          target_sources(moderngekko PRIVATE
              vendor/dolphin/Source/Core/DolphinNoGUI/PlatformMacos.mm)
 diff --git a/src/runtime/dolphin_runtime.cpp b/src/runtime/dolphin_runtime.cpp
-index f9b5405..264323a 100644
+index f9b5405..b8c133e 100644
 --- a/src/runtime/dolphin_runtime.cpp
 +++ b/src/runtime/dolphin_runtime.cpp
 @@ -19,6 +19,11 @@
@@ -42,7 +42,53 @@ index f9b5405..264323a 100644
  #include "InputCommon/ControllerInterface/Touch/InputOverrider.h"
  #include "UICommon/UICommon.h"
  #include "VideoCommon/FrameDumper.h"
-@@ -620,6 +625,9 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+@@ -546,7 +551,19 @@ ModuleSource::AttachedDescriptor(const ModernGekkoModuleDesc *descriptor) {
+ 
+ Runtime::Runtime(std::unique_ptr<Impl> impl) : m_impl(std::move(impl)) {}
+ 
++#ifdef DOLPHIN_IOS
++// Startup markers for the iOS app's console.log (stderr is unbuffered there).
++static void IOSStep(const char *what) {
++  static const auto start = std::chrono::steady_clock::now();
++  const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
++  std::fprintf(stderr, "[runtime %7.2fs] %s\n", t, what);
++}
++#else
++static void IOSStep(const char *) {}
++#endif
++
+ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
++  IOSStep("create");
+   std::lock_guard lock(s_runtime_mutex);
+   if (s_runtime_active)
+     return {
+@@ -554,7 +571,9 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+         RuntimeError{RuntimeErrorCode::AlreadyActive,
+                      "only one ModernGekko runtime may be active per process"}};
+ 
++  IOSStep("inspecting game files");
+   GameInspectResult inspected = InspectGame(config.game_root);
++  IOSStep("opening game module");
+   if (!inspected)
+     return {{}, RuntimeError{RuntimeErrorCode::InvalidGame, inspected.error}};
+ 
+@@ -590,6 +609,7 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+     config.module = {};
+   }
+   validation_library.Close();
++  IOSStep("game module validated");
+ 
+   auto impl = std::make_unique<Impl>();
+   impl->config = std::move(config);
+@@ -609,6 +629,7 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+ 
+   if (!s_external_ui_common) {
+     UICommon::SetUserDirectory(impl->config.user_directory.string());
++    IOSStep("UICommon::Init");
+     UICommon::Init();
+     impl->ui_initialized = true;
+   }
+@@ -620,6 +641,9 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
    else
      impl->platform = Platform::CreateWin32Platform();
  #endif
@@ -52,3 +98,83 @@ index f9b5405..264323a 100644
  #ifdef MODERNGEKKO_HAVE_COCOA
    else impl->platform = Platform::CreateMacOSPlatform();
  #endif
+@@ -631,6 +655,7 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+   else if (impl->config.window_system != WindowSystem::X11) impl->platform =
+       Platform::CreateWaylandPlatform();
+ #endif
++  IOSStep("platform init");
+   if (!impl->platform || !impl->platform->Init()) {
+     if (impl->ui_initialized)
+       UICommon::Shutdown();
+@@ -640,7 +665,9 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+   }
+ 
+   const WindowSystemInfo wsi = impl->platform->GetWindowSystemInfo();
++  IOSStep("InitControllers");
+   UICommon::InitControllers(wsi);
++  IOSStep("controllers ready");
+   impl->controllers_initialized = true;
+   EnsureAutomationDirectories(impl->config.automation.directory);
+   if (!impl->config.automation.directory.empty()) {
+@@ -677,7 +704,7 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+              !std::ranges::contains(audio_backends,
+                                     impl->config.audio.backend)) {
+     constexpr std::array preferred_backends = {
+-        BACKEND_CUBEB, BACKEND_PULSEAUDIO, BACKEND_ALSA};
++        BACKEND_CUBEB, BACKEND_AUDIOUNIT, BACKEND_PULSEAUDIO, BACKEND_ALSA};
+     const auto preferred =
+         std::ranges::find_if(preferred_backends, [&](const char *backend) {
+           return std::ranges::contains(audio_backends, backend);
+@@ -707,6 +734,7 @@ RuntimeCreateResult Runtime::Create(RuntimeConfig config) {
+   recomp_source.host_call_user = impl->mods.get();
+   jit.SetStaticRecompModuleSource(std::move(recomp_source));
+ 
++  IOSStep("create done");
+   s_runtime_active = true;
+   s_platform = impl->platform.get();
+   s_window_title = impl->title;
+@@ -782,6 +810,7 @@ RuntimeRunResult Runtime::Run() {
+         if (state == Core::State::Uninitialized && m_impl->platform)
+           m_impl->platform->Stop();
+       });
++  IOSStep("BootCore");
+   if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot),
+                              m_impl->platform->GetWindowSystemInfo())) {
+     m_impl->running = false;
+@@ -790,6 +819,7 @@ RuntimeRunResult Runtime::Run() {
+                          "Dolphin could not boot sys/main.dol"}};
+   }
+   m_impl->booted = true;
++  IOSStep("booted");
+   m_impl->present_hook =
+       GetVideoEvents().after_present_event.Register([this](const PresentInfo &info) {
+         m_impl->automation_state.frame_count.store(info.frame_count,
+@@ -813,7 +843,9 @@ RuntimeRunResult Runtime::Run() {
+       }
+     });
+   }
++  IOSStep("main loop");
+   m_impl->platform->MainLoop();
++  IOSStep("main loop exited");
+   title_thread.request_stop();
+   if (title_thread.joinable())
+     title_thread.join();
+diff --git a/src/runtime/game.cpp b/src/runtime/game.cpp
+index 85860a5..b204aaf 100644
+--- a/src/runtime/game.cpp
++++ b/src/runtime/game.cpp
+@@ -143,10 +143,14 @@ GameInspectResult InspectGame(const std::filesystem::path& input_root)
+       return {{}, "can't hash files/_Main.rel"};
+     metadata.rel_sha256 = *rel_hash;
+   }
++#ifndef DOLPHIN_IOS
++  // Only the desktop launcher tools compare this; reading all ~1.4 GB of game
++  // files on every launch is too slow on a phone.
+   const auto assets_hash = HashDirectorySha256(root / "files");
+   if (!assets_hash)
+     return {{}, "can't hash the files directory"};
+   metadata.assets_sha256 = *assets_hash;
++#endif
+   return {std::move(metadata), {}};
+ }
+ }  // namespace moderngekko

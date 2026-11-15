@@ -14,6 +14,9 @@ OUT="build/ios"
 GEN_OUT="$OUT/dolrecomp-output"
 CMAKE_BUILD="$OUT/cmake"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-16.0}"
+# Each new ipa is also copied here (iCloud Drive/pso-ios), if the folder
+# exists. Set IPA_COPY_DIR= (empty) to skip, or to another folder.
+IPA_COPY_DIR="${IPA_COPY_DIR-$HOME/Library/Mobile Documents/com~apple~CloudDocs/pso-ios}"
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -35,7 +38,9 @@ else
 fi
 # The module template also wants the DOL and an SMC table next to the
 # generated code (ModernGekko's port tool sets these up the same way).
-cp "$GAME_DIR/sys/main.dol" "$GEN_OUT/generated/main.dol"
+# Copy only when it differs: a fresh mtime rebuilds the whole game module.
+cmp -s "$GAME_DIR/sys/main.dol" "$GEN_OUT/generated/main.dol" ||
+  cp "$GAME_DIR/sys/main.dol" "$GEN_OUT/generated/main.dol"
 [ -f "$GEN_OUT/generated/generated_smc.txt" ] || : > "$GEN_OUT/generated/generated_smc.txt"
 
 step "Configuring for iOS"
@@ -58,11 +63,18 @@ step "Packaging"
 # Ad-hoc signatures only; sign for your device with your usual sideloading tool.
 codesign --force --sign - "$APP"/Frameworks/*.dylib
 codesign --force --sign - "$APP"
-rm -rf "$OUT/Payload" build/PSO-unsigned.ipa
+# Each build gets a timestamped name; build/PSO-unsigned.ipa links to the latest.
+IPA="PSO-unsigned-$(date +%Y%m%d-%H%M%S).ipa"
+rm -rf "$OUT/Payload"
 mkdir -p "$OUT/Payload"
 cp -R "$APP" "$OUT/Payload/"
-(cd "$OUT" && zip -qry ../PSO-unsigned.ipa Payload)
+(cd "$OUT" && zip -qry "../$IPA" Payload)
 rm -rf "$OUT/Payload"
-ls -lh build/PSO-unsigned.ipa
+ln -sf "$IPA" build/PSO-unsigned.ipa
+ls -lh "build/$IPA"
+if [ -n "$IPA_COPY_DIR" ] && [ -d "$IPA_COPY_DIR" ]; then
+  cp "build/$IPA" "$IPA_COPY_DIR/"
+  echo "Copied to $IPA_COPY_DIR/$IPA"
+fi
 echo
-echo "Done: build/PSO-unsigned.ipa"
+echo "Done: build/$IPA"

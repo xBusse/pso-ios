@@ -1,0 +1,41 @@
+diff --git a/Source/Core/Common/FileUtil.cpp b/Source/Core/Common/FileUtil.cpp
+index 6d2853b42f..fa7ec73a44 100644
+--- a/Source/Core/Common/FileUtil.cpp
++++ b/Source/Core/Common/FileUtil.cpp
+@@ -692,6 +692,7 @@ std::string GetBundleDirectory()
+   //
+   // The headers can be found under "Security" on opensource.apple.com:
+   // Security/OSX/libsecurity_translocate/lib/SecTranslocate.h
++#if !defined(DOLPHIN_IOS)  // Translocation (and these private APIs) are macOS-only.
+   if (!s_security_framework.IsOpen())
+   {
+     s_security_framework.Open("/System/Library/Frameworks/Security.framework/Security");
+@@ -700,14 +701,16 @@ std::string GetBundleDirectory()
+   }
+ 
+   bool is_translocated = false;
+-  s_is_translocated_url(bundle_ref, &is_translocated, nullptr);
++  if (s_is_translocated_url)
++    s_is_translocated_url(bundle_ref, &is_translocated, nullptr);
+ 
+-  if (is_translocated)
++  if (is_translocated && s_create_orig_path)
+   {
+     CFURLRef untranslocated_ref = s_create_orig_path(bundle_ref, nullptr);
+     CFRelease(bundle_ref);
+     bundle_ref = untranslocated_ref;
+   }
++#endif
+ 
+   char app_bundle_path[MAXPATHLEN];
+   CFStringRef bundle_path = CFURLCopyFileSystemPath(bundle_ref, kCFURLPOSIXPathStyle);
+@@ -760,7 +763,8 @@ std::string GetExeDirectory()
+ 
+ static std::string CreateSysDirectoryPath()
+ {
+-#if defined(_WIN32) || defined(LINUX_LOCAL_DEV)
++#if defined(_WIN32) || defined(LINUX_LOCAL_DEV) || defined(DOLPHIN_IOS)
++// iOS app bundles are flat: Sys sits next to the executable.
+ #define SYSDATA_DIR "Sys"
+ #elif defined __APPLE__
+ #define SYSDATA_DIR "Contents/Resources/Sys"

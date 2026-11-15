@@ -24,11 +24,14 @@ for patch in "$@"; do
   fi
 
   # Reset whatever this patch (any version of it) touches, then apply.
-  files=$(sed -n 's|^+++ b/||p' "$abs")
-  if [ -n "$files" ]; then
-    # shellcheck disable=SC2086
-    git -C "$repo" checkout -- $files
-  fi
+  # Files the patch adds aren't in the submodule, so they're removed instead.
+  for f in $(sed -n 's|^+++ b/||p' "$abs"); do
+    if git -C "$repo" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+      git -C "$repo" checkout -- "$f"
+    else
+      rm -f "$repo/$f"
+    fi
+  done
   echo "Applying $name"
   git -C "$repo" apply "$abs"
   echo "$sum" > "$stamp"

@@ -31,14 +31,17 @@ hash, because CISO drops the disc's padding.
     make ios
 
 This builds the Mac tools if needed, recompiles `PsoV3.dol`, builds the runtime, game module and app for the
-iOS SDK, and writes `build/PSO-unsigned.ipa`. Sign and install it with your usual sideloading tool.
+iOS SDK, and writes `build/PSO-unsigned-<date>-<time>.ipa` (`build/PSO-unsigned.ipa` links to the newest). Sign
+and install it with your usual sideloading tool. If `iCloud Drive/pso-ios` exists, each new ipa is copied there too (`IPA_COPY_DIR=` to skip, or set another folder).
 
 The game files aren't in the app. Copy them over once: connect the iPhone, open it in Finder, go to **Files**,
-and drag `extracted/pso` onto **PSO**. Saves go to the app's `User` folder.
+and drag `extracted/pso` onto **PSO**. Saves go to the app's `User` folder; `User/Logs` has `console.log` and `dolphin.log` for debugging.
 
 How iOS differs from the Mac build (patches in `patches/`, all behind `IOS` / `DOLPHIN_IOS`):
 - Video is Metal only; the app hands Dolphin a `CAMetalLayer` (`ios/src/PlatformIOS.mm`).
 - No JIT: anything outside the recompiled code runs on the interpreter, and vertex loading uses the portable loader.
+- Audio goes through a RemoteIO AudioUnit (`AudioUnitStream`, `patches/dolphin-0002-ios-audio.patch`); Cubeb's
+  CoreAudio code is macOS-only.
 - Input comes from the on-screen pad or a connected controller (Xbox/PlayStation/MFi).
 
 ## Status

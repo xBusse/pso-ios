@@ -1,0 +1,247 @@
+diff --git a/Source/Core/AudioCommon/AudioCommon.cpp b/Source/Core/AudioCommon/AudioCommon.cpp
+index 8ec653ac76..a16e71d9f7 100644
+--- a/Source/Core/AudioCommon/AudioCommon.cpp
++++ b/Source/Core/AudioCommon/AudioCommon.cpp
+@@ -7,6 +7,7 @@
+ #include <fmt/format.h>
+ 
+ #include "AudioCommon/AlsaSoundStream.h"
++#include "AudioCommon/AudioUnitStream.h"
+ #include "AudioCommon/CubebStream.h"
+ #include "AudioCommon/Mixer.h"
+ #include "AudioCommon/NullSoundStream.h"
+@@ -42,6 +43,8 @@ static std::unique_ptr<SoundStream> CreateSoundStreamForBackend(std::string_view
+     return std::make_unique<PulseAudio>();
+   else if (backend == BACKEND_OPENSLES && OpenSLESStream::IsValid())
+     return std::make_unique<OpenSLESStream>();
++  else if (backend == BACKEND_AUDIOUNIT && AudioUnitStream::IsValid())
++    return std::make_unique<AudioUnitStream>();
+ #ifdef _MSC_VER
+   else if (backend == BACKEND_WASAPI && WASAPIStream::IsValid())
+     return std::make_unique<WASAPIStream>();
+@@ -101,6 +104,8 @@ std::string GetDefaultSoundBackend()
+ #if defined(ANDROID)
+   return BACKEND_OPENSLES;
+ #else
++  if (AudioUnitStream::IsValid())
++    return BACKEND_AUDIOUNIT;
+   if (CubebStream::IsValid())
+     return BACKEND_CUBEB;
+ #endif
+@@ -133,6 +138,8 @@ std::vector<std::string> GetSoundBackends()
+     backends.emplace_back(BACKEND_OPENAL);
+   if (OpenSLESStream::IsValid())
+     backends.emplace_back(BACKEND_OPENSLES);
++  if (AudioUnitStream::IsValid())
++    backends.emplace_back(BACKEND_AUDIOUNIT);
+ #ifdef _MSC_VER
+   if (WASAPIStream::IsValid())
+     backends.emplace_back(BACKEND_WASAPI);
+diff --git a/Source/Core/AudioCommon/AudioUnitStream.cpp b/Source/Core/AudioCommon/AudioUnitStream.cpp
+new file mode 100644
+index 0000000000..be6dbe5eaf
+--- /dev/null
++++ b/Source/Core/AudioCommon/AudioUnitStream.cpp
+@@ -0,0 +1,125 @@
++// Copyright 2026 Dolphin Emulator Project
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#ifdef HAVE_AUDIOUNIT
++#include "AudioCommon/AudioUnitStream.h"
++
++#include <algorithm>
++#include <cstring>
++
++#include "Common/CommonTypes.h"
++#include "Common/Logging/Log.h"
++
++namespace
++{
++constexpr UInt32 CHANNELS = 2;
++
++bool Check(OSStatus status, const char* what)
++{
++  if (status == noErr)
++    return true;
++  ERROR_LOG_FMT(AUDIO, "AudioUnit: {} failed ({})", what, static_cast<int>(status));
++  return false;
++}
++}  // namespace
++
++OSStatus AudioUnitStream::RenderCallback(void* ref_con, AudioUnitRenderActionFlags* /*flags*/,
++                                         const AudioTimeStamp* /*timestamp*/, UInt32 /*bus*/,
++                                         UInt32 num_frames, AudioBufferList* buffers)
++{
++  auto* const self = static_cast<AudioUnitStream*>(ref_con);
++  AudioBuffer& buffer = buffers->mBuffers[0];
++  auto* const samples = static_cast<s16*>(buffer.mData);
++  const UInt32 frames = std::min<UInt32>(num_frames, buffer.mDataByteSize / (CHANNELS * sizeof(s16)));
++
++  self->m_mixer->Mix(samples, frames);
++
++  const float gain = self->m_gain.load(std::memory_order_relaxed);
++  if (gain <= 0.0f)
++  {
++    std::memset(samples, 0, frames * CHANNELS * sizeof(s16));
++  }
++  else if (gain < 1.0f)
++  {
++    for (UInt32 i = 0; i < frames * CHANNELS; ++i)
++      samples[i] = static_cast<s16>(samples[i] * gain);
++  }
++  return noErr;
++}
++
++bool AudioUnitStream::Init()
++{
++  AudioComponentDescription desc{};
++  desc.componentType = kAudioUnitType_Output;
++  desc.componentSubType = kAudioUnitSubType_RemoteIO;
++  desc.componentManufacturer = kAudioUnitManufacturer_Apple;
++
++  AudioComponent component = AudioComponentFindNext(nullptr, &desc);
++  if (!component)
++  {
++    ERROR_LOG_FMT(AUDIO, "AudioUnit: no RemoteIO component");
++    return false;
++  }
++  if (!Check(AudioComponentInstanceNew(component, &m_unit), "AudioComponentInstanceNew"))
++  {
++    m_unit = nullptr;
++    return false;
++  }
++
++  // The mixer renders interleaved stereo s16 at its sample rate; the unit
++  // converts to the hardware's rate and format.
++  const u32 sample_rate = m_mixer->GetSampleRate();
++  AudioStreamBasicDescription format{};
++  format.mSampleRate = sample_rate;
++  format.mFormatID = kAudioFormatLinearPCM;
++  format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
++  format.mChannelsPerFrame = CHANNELS;
++  format.mBitsPerChannel = 16;
++  format.mFramesPerPacket = 1;
++  format.mBytesPerFrame = CHANNELS * sizeof(s16);
++  format.mBytesPerPacket = format.mBytesPerFrame;
++  if (!Check(AudioUnitSetProperty(m_unit, kAudioUnitProperty_StreamFormat,
++                                  kAudioUnitScope_Input, 0, &format, sizeof(format)),
++             "set stream format"))
++    return false;
++
++  AURenderCallbackStruct callback{};
++  callback.inputProc = RenderCallback;
++  callback.inputProcRefCon = this;
++  if (!Check(AudioUnitSetProperty(m_unit, kAudioUnitProperty_SetRenderCallback,
++                                  kAudioUnitScope_Input, 0, &callback, sizeof(callback)),
++             "set render callback"))
++    return false;
++
++  if (!Check(AudioUnitInitialize(m_unit), "AudioUnitInitialize"))
++    return false;
++  m_initialized = true;
++
++  INFO_LOG_FMT(AUDIO, "AudioUnit: RemoteIO output, {} Hz stereo", sample_rate);
++  return true;
++}
++
++AudioUnitStream::~AudioUnitStream()
++{
++  if (!m_unit)
++    return;
++  AudioOutputUnitStop(m_unit);
++  if (m_initialized)
++    AudioUnitUninitialize(m_unit);
++  AudioComponentInstanceDispose(m_unit);
++  m_unit = nullptr;
++}
++
++bool AudioUnitStream::SetRunning(bool running)
++{
++  if (!m_unit)
++    return false;
++  return Check(running ? AudioOutputUnitStart(m_unit) : AudioOutputUnitStop(m_unit),
++               running ? "start" : "stop");
++}
++
++void AudioUnitStream::SetVolume(int volume)
++{
++  m_gain.store(std::clamp(volume, 0, 100) / 100.0f, std::memory_order_relaxed);
++}
++#endif  // HAVE_AUDIOUNIT
+diff --git a/Source/Core/AudioCommon/AudioUnitStream.h b/Source/Core/AudioCommon/AudioUnitStream.h
+new file mode 100644
+index 0000000000..ce1f178e03
+--- /dev/null
++++ b/Source/Core/AudioCommon/AudioUnitStream.h
+@@ -0,0 +1,37 @@
++// Copyright 2026 Dolphin Emulator Project
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <atomic>
++
++#ifdef HAVE_AUDIOUNIT
++#include <AudioToolbox/AudioToolbox.h>
++#endif
++
++#include "AudioCommon/SoundStream.h"
++
++// Audio output through a RemoteIO AudioUnit, for iOS (where Cubeb's CoreAudio
++// backend isn't available). The app is expected to configure and activate the
++// AVAudioSession; this only renders the mixer into the unit's buffers.
++class AudioUnitStream final : public SoundStream
++{
++#ifdef HAVE_AUDIOUNIT
++public:
++  ~AudioUnitStream() override;
++  bool Init() override;
++  bool SetRunning(bool running) override;
++  void SetVolume(int volume) override;
++  static bool IsValid() { return true; }
++
++private:
++  static OSStatus RenderCallback(void* ref_con, AudioUnitRenderActionFlags* flags,
++                                 const AudioTimeStamp* timestamp, UInt32 bus, UInt32 num_frames,
++                                 AudioBufferList* buffers);
++
++  AudioComponentInstance m_unit = nullptr;
++  bool m_initialized = false;
++  // Linear gain, 0..1, applied in the render callback (RemoteIO has no volume parameter).
++  std::atomic<float> m_gain{1.0f};
++#endif  // HAVE_AUDIOUNIT
++};
+diff --git a/Source/Core/AudioCommon/CMakeLists.txt b/Source/Core/AudioCommon/CMakeLists.txt
+index 2564448380..b1755995cd 100644
+--- a/Source/Core/AudioCommon/CMakeLists.txt
++++ b/Source/Core/AudioCommon/CMakeLists.txt
+@@ -36,6 +36,17 @@ if(ANDROID)
+   endif()
+ endif()
+ 
++if(IOS)
++  # RemoteIO output; Cubeb's CoreAudio backend is macOS-only.
++  message(STATUS "iOS: enabling AudioUnit sound backend")
++  target_sources(audiocommon PRIVATE
++    AudioUnitStream.cpp
++    AudioUnitStream.h
++  )
++  target_link_libraries(audiocommon PRIVATE "-framework AudioToolbox")
++  target_compile_definitions(audiocommon PRIVATE HAVE_AUDIOUNIT=1)
++endif()
++
+ if(ENABLE_ALSA)
+   find_package(ALSA)
+   if(ALSA_FOUND)
+diff --git a/Source/Core/Core/Config/MainSettings.h b/Source/Core/Core/Config/MainSettings.h
+index 14689b4947..27366afc32 100644
+--- a/Source/Core/Core/Config/MainSettings.h
++++ b/Source/Core/Core/Config/MainSettings.h
+@@ -21,6 +21,7 @@
+ #define BACKEND_OPENAL "OpenAL"
+ #define BACKEND_PULSEAUDIO "Pulse"
+ #define BACKEND_OPENSLES "OpenSLES"
++#define BACKEND_AUDIOUNIT "AudioUnit"
+ #define BACKEND_WASAPI _trans("WASAPI (Exclusive Mode)")
+ 
+ namespace PowerPC

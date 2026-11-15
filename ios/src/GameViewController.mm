@@ -113,8 +113,42 @@
 
 - (void)chooseGameFolder
 {
-  UIDocumentPickerViewController* picker =
-      [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
+  // Some sideloading tools inject a "file picker fix" that forces asCopy:YES,
+  // which UIKit rejects for folders with an exception. Fall back to the older
+  // initializer, and failing that, point to the Files app instead of crashing.
+  UIDocumentPickerViewController* picker = nil;
+  @try
+  {
+    picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
+  }
+  @catch (NSException* e)
+  {
+    NSLog(@"PSO: folder picker failed (%@): %@", e.name, e.reason);
+    picker = nil;
+  }
+  if (!picker)
+  {
+    @try
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.folder" ]
+                                                                       inMode:UIDocumentPickerModeOpen];
+#pragma clang diagnostic pop
+    }
+    @catch (NSException* e)
+    {
+      NSLog(@"PSO: legacy folder picker failed (%@): %@", e.name, e.reason);
+      picker = nil;
+    }
+  }
+  if (!picker)
+  {
+    [self showMissingFiles:@"This copy of the app can't open the folder picker (the sideloading tool's "
+                           @"file picker fix only allows single files). Turn that option off when signing, "
+                           @"or copy the game files in with the Files app as described below."];
+    return;
+  }
   picker.delegate = self;
   picker.allowsMultipleSelection = NO;
   [self presentViewController:picker animated:YES completion:nil];
