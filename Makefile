@@ -3,6 +3,7 @@
 #
 #   make tools                    Build DolRecomp and ModernGekko
 #   make extract DISC=path        Extract your disc (ISO or CISO) into extracted/pso
+#                                 (or DOL=path/PsoV3.dol: enough for `make ios`)
 #   make recompile                Recompile PsoV3.dol and build the native module
 #   make run                      Recompile if needed and launch the game
 #   make names                    Write build/pso.map (decomp function names)
@@ -36,17 +37,26 @@ DOLPHIN_PATCHES := $(wildcard patches/dolphin-*.patch)
 DOLPHIN_DIR := $(MODERNGEKKO_DIR)/vendor/dolphin
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko patch-moderngekko user-config submodules extract recompile run names ios icon clean clean-game
+.PHONY: help tools dolrecomp moderngekko host-dolrecomp patch-moderngekko user-config submodules decomp extract recompile run names ios icon clean clean-game
 
 help:
-	@sed -n '4,10p' Makefile | sed 's/^# //'
+	@sed -n '4,11p' Makefile | sed 's/^# //'
 
+# DolRecomp and ModernGekko (with Dolphin and its libraries). Dolphin's
+# prebuilt Windows Qt and FFmpeg are large and unused here, so they're skipped.
+# pso-decomp is only needed for `make names` (see decomp).
 submodules:
-	@if [ ! -f "$(DOLRECOMP_DIR)/CMakeLists.txt" ] || [ ! -f "$(MODERNGEKKO_DIR)/CMakeLists.txt" ] || \
-	    [ ! -f "$(DECOMP_DIR)/configure.py" ]; then \
+	@if [ ! -f "$(DOLRECOMP_DIR)/CMakeLists.txt" ] || [ ! -f "$(DOLPHIN_DIR)/Externals/fmt/fmt/CMakeLists.txt" ]; then \
 		git submodule sync --recursive; \
-		git submodule update --init --recursive --depth 1; \
+		git submodule update --init --depth 1 $(DOLRECOMP_DIR) $(MODERNGEKKO_DIR); \
+		git -C $(DOLRECOMP_DIR) submodule update --init --recursive --depth 1; \
+		git -C $(MODERNGEKKO_DIR) submodule update --init --depth 1; \
+		git -C $(DOLPHIN_DIR) -c submodule.Externals/Qt.update=none -c submodule.Externals/FFmpeg-bin.update=none \
+			submodule update --init --recursive --depth 1; \
 	fi
+
+decomp:
+	@[ -f "$(DECOMP_DIR)/configure.py" ] || git submodule update --init --depth 1 $(DECOMP_DIR)
 
 dolrecomp: submodules
 	cmake -S $(DOLRECOMP_DIR) -B $(DOLRECOMP_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
@@ -63,13 +73,29 @@ moderngekko: patch-moderngekko
 	cmake -S $(MODERNGEKKO_DIR) -B $(MODERNGEKKO_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
 	cmake --build $(MODERNGEKKO_BUILD) --target moderngekko-port -j$(JOBS)
 
+# Only the recompiler from ModernGekko's host build: all `make ios` needs
+# from the Mac side.
+host-dolrecomp: patch-moderngekko
+	cmake -S $(MODERNGEKKO_DIR) -B $(MODERNGEKKO_BUILD) -G Ninja -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) -DBUILD_TESTING=OFF
+	cmake --build $(MODERNGEKKO_BUILD) --target moderngekko-port-recompiler -j$(JOBS)
+
 tools: dolrecomp moderngekko
 
 # Extract the disc, then make PsoV3.dol the main executable. The disc's own
 # sys/main.dol is "switcher", a small launcher that only loads PsoV3.dol;
-# it is kept as sys/switcher.dol.
-$(GAME_DIR)/sys/main.dol: | dolrecomp
+# it is kept as sys/switcher.dol. DOL=path/PsoV3.dol instead of DISC sets up
+# only the executable, which is all the iOS build needs (the app imports the
+# rest of the disc on the phone).
+ifneq ($(DOL),)
+$(GAME_DIR)/sys/main.dol:
+	python3 tools/check_sha1.py "$(DOL)" $(PSOV3_SHA1)
+	@mkdir -p $(GAME_DIR)/sys $(GAME_DIR)/files
+	cp "$(DOL)" $(GAME_DIR)/files/PsoV3.dol
+	cp "$(DOL)" $(GAME_DIR)/sys/main.dol
+else
+$(GAME_DIR)/sys/main.dol:
 	@if [ -z "$(DISC)" ]; then echo "error: pass DISC=/path/to/PSO.ciso (or .iso) the first time" >&2; exit 1; fi
+	@$(MAKE) --no-print-directory dolrecomp
 	@mkdir -p build
 	@case "$(DISC)" in \
 	  *.ciso|*.CISO) echo "Converting CISO to ISO..."; python3 tools/ciso2iso.py "$(DISC)" build/disc.iso ;; \
@@ -81,6 +107,7 @@ $(GAME_DIR)/sys/main.dol: | dolrecomp
 	mv $(GAME_DIR)/sys/main.dol $(GAME_DIR)/sys/switcher.dol
 	cp $(GAME_DIR)/files/PsoV3.dol $(GAME_DIR)/sys/main.dol
 	@rm -f build/disc.iso
+endif
 
 extract: $(GAME_DIR)/sys/main.dol
 
@@ -114,7 +141,7 @@ run: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
 
 # iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the
 # runtime, game module and app for the iOS SDK.
-ios: moderngekko extract
+ios: host-dolrecomp extract
 	JOBS=$(JOBS) scripts/build-ios.sh
 
 # App icon. `make icon` redraws the default; `make icon ICON=path/to/image`
@@ -131,7 +158,7 @@ icon:
 	  swift scripts/make-icon.swift ios/resources/fonts/Baloo2-SemiBold.ttf ios/icon/AppIcon.png; \
 	fi
 
-names: submodules
+names: decomp
 	@mkdir -p build
 	python3 tools/make_map.py $(DECOMP_DIR)/config/$(GAME_ID)/psov3/symbols.txt $(MAP_FILE)
 

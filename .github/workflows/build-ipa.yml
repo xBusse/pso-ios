@@ -1,0 +1,109 @@
+# Builds the iOS app (an unsigned .ipa) on a GitHub-hosted Mac.
+#
+# Run it from your own PRIVATE copy of this repo, holding your PsoV3.dol (USA v1.02,
+# SHA-1 0d85744b51d7379efb025a943d0cd5aaae2191a3) in ONE of these places:
+#   - a file named PsoV3.dol anywhere in the repo (e.g. uploaded with "Add file > Upload files"), or
+#   - a release asset named PsoV3.dol (Releases > Draft a new release > attach it > Publish release).
+# The code that gets built comes from the main repo (the "source" input), so each run builds the
+# newest version and your copy never needs updating. See docs/build-with-github.md.
+#
+# The .ipa contains the recompiled game, so this refuses to run in a public repo.
+
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Repository to build (owner/name), or 'this' for this copy's own code"
+        default: xBusse/pso-ios
+      ref:
+        description: Branch or tag of that repository
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 240
+    steps:
+      - name: Check this repository is private
+        if: ${{ github.event.repository.private == false }}
+        run: |
+          echo "::error::This repository is public. The built app contains the game's code, so only build it in a private copy (see docs/build-with-github.md)."
+          exit 1
+
+      - name: Get this copy (for PsoV3.dol)
+        uses: actions/checkout@v4
+        with:
+          path: own
+
+      - name: Get the code to build
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ (inputs.source == 'this' || inputs.source == github.repository) && github.repository || inputs.source }}
+          ref: ${{ inputs.ref }}
+          path: src
+
+      - name: Find PsoV3.dol
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/dol"
+          mkdir -p "$out"
+          dol="$(find own -path own/lib -prune -o -type f -iname 'PsoV3.dol' -print | head -n 1)"
+          if [ -n "$dol" ]; then
+            echo "Using ${dol#own/} from this repository"
+            cp "$dol" "$out/PsoV3.dol"
+          else
+            for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName'); do
+              if gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'PsoV3.dol' --dir "$out" 2>/dev/null; then
+                echo "Using PsoV3.dol from release $tag"
+                break
+              fi
+            done
+          fi
+          if [ ! -f "$out/PsoV3.dol" ]; then
+            echo "::error::PsoV3.dol wasn't found. Upload it to this repository, or attach it to a published release (see docs/build-with-github.md)."
+            exit 1
+          fi
+          python3 src/tools/check_sha1.py "$out/PsoV3.dol" 0d85744b51d7379efb025a943d0cd5aaae2191a3 || {
+            echo "::error::That PsoV3.dol isn't from the USA v1.02 disc (GPOE8P). See docs/build-with-github.md."
+            exit 1
+          }
+
+      - name: Install build tools
+        run: |
+          brew install ninja pkg-config || true
+          cmake --version | head -n 1
+          echo "ninja $(ninja --version)"
+          xcodebuild -version
+
+      - name: Fetch dependencies
+        working-directory: src
+        run: make submodules
+
+      - name: Build
+        working-directory: src
+        env:
+          IPA_COPY_DIR: ""
+        run: make ios DOL="$RUNNER_TEMP/dol/PsoV3.dol"
+
+      - name: Find the app file
+        id: ipa
+        working-directory: src
+        run: |
+          ipa="$(ls -t build/PSO-unsigned-*.ipa | head -n 1)"
+          echo "path=src/$ipa" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$ipa" .ipa)" >> "$GITHUB_OUTPUT"
+          ls -lh "$ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ipa.outputs.name }}
+          path: ${{ steps.ipa.outputs.path }}
+          compression-level: 0
+          retention-days: 7

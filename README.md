@@ -26,11 +26,18 @@ puts `PsoV3.dol` in its place, so the real game is what gets recompiled.
 SHA-1 `0d85744b51d7379efb025a943d0cd5aaae2191a3`. A CISO converted back to ISO won't match the full-dump
 hash, because CISO drops the disc's padding.
 
+## Building for iOS without a Mac
+
+[docs/build-with-github.md](docs/build-with-github.md) is a step-by-step guide to building the app on
+GitHub's Macs from a browser: a private copy of this repo holds your `PsoV3.dol`, and the **Build iOS app**
+workflow (`.github/workflows/build-ipa.yml`) builds the newest code from this repo and hands back the ipa.
+
 ## Building for iOS (Mac with Xcode)
 
-    make ios
+    make ios                          # after `make extract DISC=...`, or:
+    make ios DOL=/path/to/PsoV3.dol   # only the game program, copied out of the disc (e.g. with Dolphin)
 
-This builds the Mac tools if needed, recompiles `PsoV3.dol`, builds the runtime, game module and app for the
+This builds the recompiler if needed, recompiles `PsoV3.dol`, builds the runtime, game module and app for the
 iOS SDK, and writes `build/PSO-unsigned-<date>-<time>.ipa` (`build/PSO-unsigned.ipa` links to the newest). Sign
 and install it with your usual sideloading tool. If `iCloud Drive/pso-ios` exists, each new ipa is copied there too (`IPA_COPY_DIR=` to skip, or set another folder).
 
