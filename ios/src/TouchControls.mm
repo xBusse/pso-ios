@@ -65,6 +65,10 @@ constexpr PaletteSlot kPaletteSlots[] = {
   // Touches on the game's action palette, and the button each one holds.
   NSMapTable<UITouch*, NSNumber*>* _paletteTouch;
   BOOL _tapPalette;
+  // With A and B both removed, taps on empty space outside the field: one finger is A, two are
+  // B. Decided when the last finger lifts.
+  NSMutableSet<UITouch*>* _menuTaps;
+  NSUInteger _menuTapFingers;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -260,7 +264,9 @@ constexpr PaletteSlot kPaletteSlots[] = {
     idle = 0;
   else if (c.kind == Kind::Stick && _stickMode != PSOStickAlways && !_stickHeld)
     idle = 0;  // only drawn while held
-  const CGFloat lit = MIN(1.0, MAX(idle * 2.0, idle + 0.3));
+  // A removed control stays invisible while pressed or latched (R toggled by a palette tap or a
+  // controller still lights the R button otherwise).
+  const CGFloat lit = (c.hidden && !self.editing) ? 0 : MIN(1.0, MAX(idle * 2.0, idle + 0.3));
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
   c.base.opacity = (pressed || latched) ? lit : idle;
@@ -274,6 +280,14 @@ constexpr PaletteSlot kPaletteSlots[] = {
   c.base.lineWidth = selected ? 3 : 2;
   c.base.lineDashPattern = c.hidden ? @[ @6, @5 ] : nil;
   [CATransaction commit];
+}
+
+- (BOOL)isHidden:(PSOInput)input
+{
+  for (const Control& c : _controls)
+    if (c.kind == Kind::Button && c.input == input)
+      return c.hidden;
+  return YES;
 }
 
 - (int)controlAt:(CGPoint)p
@@ -623,7 +637,23 @@ constexpr PaletteSlot kPaletteSlots[] = {
     const int index = [self controlAt:p];
     if (index < 0)
     {
-      const int button = _tapPalette ? [self paletteButtonAt:p] : -1;
+      const BOOL palette = PSOIsActionPaletteVisible();
+      int button = _tapPalette && palette ? [self paletteButtonAt:p] : -1;
+      // With the A button removed, a tap anywhere confirms in menus and dialogs (anywhere
+      // the palette isn't up; in the field, A is the palette's own slot). With B removed too,
+      // a two-finger tap goes back.
+      if (button < 0 && !palette && [self isHidden:PSOInputA])
+      {
+        if ([self isHidden:PSOInputB])
+        {
+          if (!_menuTaps)
+            _menuTaps = [NSMutableSet set];
+          [_menuTaps addObject:touch];
+          _menuTapFingers = MAX(_menuTapFingers, _menuTaps.count);
+          continue;
+        }
+        button = PSOInputA;
+      }
       if (button >= 0)
       {
         [_paletteTouch setObject:@(button) forKey:touch];
@@ -691,6 +721,20 @@ constexpr PaletteSlot kPaletteSlots[] = {
   {
     if (touch == _cameraTouch)
       [self releaseCamera];
+    if ([_menuTaps containsObject:touch])
+    {
+      [_menuTaps removeObject:touch];
+      if (_menuTaps.count == 0)
+      {
+        const PSOInput button = _menuTapFingers >= 2 ? PSOInputB : PSOInputA;
+        _menuTapFingers = 0;
+        // A short press: long enough for the game to see it (it reads the pad once a frame).
+        PSOSetInput(button, 1);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(),
+                       ^{ PSOClearInput(button); });
+      }
+      continue;
+    }
     if (NSNumber* button = [_paletteTouch objectForKey:touch])
     {
       [_paletteTouch removeObjectForKey:touch];
@@ -717,6 +761,10 @@ constexpr PaletteSlot kPaletteSlots[] = {
 
 - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
 {
+  for (UITouch* touch in touches)
+    [_menuTaps removeObject:touch];
+  if (_menuTaps.count == 0)
+    _menuTapFingers = 0;
   [self endTouches:touches];
 }
 

@@ -128,6 +128,141 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
       [weakPage goBack];
     }],
   ];
+  // Public servers ban cheaters; the mods stay off there (Settings.cheatsAllowed).
+  for (PSOMenuItem* item in page.items)
+  {
+    if (item.value)
+    {
+      item.enabled = ^{
+        return PSOSettings.cheatsAllowed;
+      };
+      if (!PSOSettings.cheatsAllowed)
+        item.help = @"Off while Network is set to a public server.";
+    }
+  }
+  return page;
+}
+
+static NSString* NetworkModeName(PSONetworkMode mode)
+{
+  switch (mode)
+  {
+  case PSONetworkOff: return @"Off";
+  case PSONetworkPublic: return @"Public server";
+  case PSONetworkPrivate: return @"Private server";
+  }
+  return @"";
+}
+
+static void EditServerAddress(PSOPageViewController* page)
+{
+  const BOOL isPublic = PSOSettings.networkMode == PSONetworkPublic;
+  UIAlertController* alert = [UIAlertController
+      alertControllerWithTitle:isPublic ? @"Public server DNS" : @"Private server address"
+                       message:isPublic ? @"The DNS address the server asks you to use. Leave it empty for "
+                                          @"Schthack."
+                                        : @"The address of a newserv server, such as 192.168.1.20 or a "
+                                          @"Tailscale name. Port 5059 is used unless you add one "
+                                          @"(name:port)."
+                preferredStyle:UIAlertControllerStyleAlert];
+  [alert addTextFieldWithConfigurationHandler:^(UITextField* field) {
+    field.text = isPublic ? PSOSettings.publicServer : PSOSettings.privateServer;
+    field.placeholder = isPublic ? PSOSettings.defaultPublicServer : @"192.168.1.20";
+    field.keyboardType = UIKeyboardTypeURL;
+    field.autocorrectionType = UITextAutocorrectionTypeNo;
+    field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    field.clearButtonMode = UITextFieldViewModeWhileEditing;
+  }];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+  __weak PSOPageViewController* weakPage = page;
+  __weak UIAlertController* weakAlert = alert;
+  [alert addAction:[UIAlertAction actionWithTitle:@"Save"
+                                            style:UIAlertActionStyleDefault
+                                          handler:^(UIAlertAction*) {
+                                            NSString* text = weakAlert.textFields.firstObject.text ?: @"";
+                                            if (isPublic)
+                                              PSOSettings.publicServer = text;
+                                            else
+                                              PSOSettings.privateServer = text;
+                                            [weakPage refresh];
+                                          }]];
+  [page presentViewController:alert animated:YES completion:nil];
+}
+
+@interface PSONetworkPage : PSOPageViewController
+@end
+
+@implementation PSONetworkPage
+- (void)refresh
+{
+  [super refresh];
+  UILabel* status = self.statusLabel;
+  const PSONetworkMode mode = PSOSettings.networkMode;
+  if (mode == PSONetworkOff)
+  {
+    status.text = @"Online play is off.";
+    status.textColor = PSOColor(170, 175, 200, 255);
+  }
+  else if (PSOSettings.networkServerAddress.length == 0)
+  {
+    status.text = @"Enter the server's address.";
+    status.textColor = PSOColor(237, 194, 84, 255);
+  }
+  else
+  {
+    status.text = mode == PSONetworkPublic
+                      ? @"✓ Ready. Mods are off while on a public server."
+                      : @"✓ Ready. In the game, choose ONLINE GAME.";
+    status.textColor = PSOColor(115, 242, 140, 255);
+  }
+  self.footerLabel.text = @"Game network settings: leave IP address and DNS on automatic.";
+  [self.view setNeedsLayout];
+}
+@end
+
+static PSOPageViewController* MakeNetworkPage(BOOL overGame)
+{
+  PSONetworkPage* page = [PSONetworkPage new];
+  page.pageTitle = @"Network";
+  page.overGame = overGame;
+  page.smallItems = YES;
+  page.valueColumn = 8.2;
+  __weak PSOPageViewController* weakPage = page;
+
+  PSOMenuItem* server = [PSOMenuItem action:@"SERVER ADDRESS"
+                                       help:@"Public server: the DNS address the server's website gives for "
+                                            @"GameCube BBA players. Private server: where a newserv server runs."
+                                        run:^{
+                                          EditServerAddress(weakPage);
+                                        }];
+  server.value = ^{
+    NSString* a = PSOSettings.networkServerAddress;
+    if (PSOSettings.networkMode == PSONetworkOff)
+      return @"";
+    if (PSOSettings.networkMode == PSONetworkPublic && [a isEqualToString:PSOSettings.defaultPublicServer])
+      return @"Schthack";
+    return a.length ? a : @"Not set";
+  };
+  server.enabled = ^{
+    return (BOOL)(PSOSettings.networkMode != PSONetworkOff);
+  };
+
+  page.items = @[
+    [PSOMenuItem choice:@"ONLINE PLAY"
+                   help:@"Public server: play on an internet PSO server such as Schthack (they need an "
+                        @"account). Private server: connect to a newserv server, like one a friend runs."
+                  value:^{
+                    return NetworkModeName(PSOSettings.networkMode);
+                  }
+                 adjust:^(NSInteger d) {
+                   PSOSettings.networkMode = (PSONetworkMode)((PSOSettings.networkMode + d + 3) % 3);
+                   [weakPage refresh];
+                 }],
+    server,
+    [PSOMenuItem action:@"BACK" help:nil run:^{
+      [weakPage goBack];
+    }],
+  ];
   return page;
 }
 
@@ -320,6 +455,11 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                         @"boosts."
                     run:^{
                       [weakPage showPage:MakeModsPage(overGame)];
+                    }],
+    [PSOMenuItem action:@"NETWORK"
+                   help:@"Play online: on a public server, or on a private newserv server."
+                    run:^{
+                      [weakPage showPage:MakeNetworkPage(overGame)];
                     }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];

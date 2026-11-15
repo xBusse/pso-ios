@@ -233,8 +233,78 @@ static PSOPadButton DefaultPadButton(PSOInput input)
 
 static void ApplyCheats(void)
 {
+  if (!PSOSettings.cheatsAllowed)
+  {
+    PSOSetCheats(false, false, false, 1, 1);
+    return;
+  }
   PSOSetCheats(PSOSettings.infiniteMeseta, PSOSettings.infiniteHpTp, PSOSettings.magAlwaysHungry,
                (int)PSOSettings.expMultiplier, (int)PSOSettings.rareMultiplier);
+}
+
+// ---- Network ----
+
+static NSString* StringOr(NSString* key, NSString* fallback)
+{
+  id v = [Defaults() objectForKey:key];
+  return [v isKindOfClass:NSString.class] ? v : fallback;
+}
+
+static void ApplyNetwork(void)
+{
+  PSOSetNetwork(PSOSettings.networkMode, PSOSettings.networkServerAddress);
+  ApplyCheats();
+}
+
++ (PSONetworkMode)networkMode
+{
+  return (PSONetworkMode)MAX(0, MIN(2, IntegerOr(@"networkMode", PSONetworkOff)));
+}
++ (void)setNetworkMode:(PSONetworkMode)v
+{
+  Set(@"networkMode", @(v));
+  ApplyNetwork();
+}
+
+// Schthack's DNS, Dolphin's default: it points the game at their server.
++ (NSString*)defaultPublicServer
+{
+  return @"3.18.217.27";
+}
++ (NSString*)publicServer
+{
+  return StringOr(@"publicServer", self.defaultPublicServer);
+}
++ (void)setPublicServer:(NSString*)v
+{
+  NSString* t = [v stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+  Set(@"publicServer", t.length ? t : self.defaultPublicServer);
+  ApplyNetwork();
+}
+
++ (NSString*)privateServer
+{
+  return StringOr(@"privateServer", @"");
+}
++ (void)setPrivateServer:(NSString*)v
+{
+  Set(@"privateServer", [v stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"");
+  ApplyNetwork();
+}
+
++ (NSString*)networkServerAddress
+{
+  switch (self.networkMode)
+  {
+  case PSONetworkPublic: return self.publicServer;
+  case PSONetworkPrivate: return self.privateServer;
+  default: return @"";
+  }
+}
+
++ (BOOL)cheatsAllowed
+{
+  return self.networkMode != PSONetworkPublic;
 }
 
 static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
@@ -336,6 +406,7 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
   PSOSetRToggle(self.rToggle);
   PSOSetCameraSpeed((int)self.cameraSpeed);
   ApplyCheats();
+  PSOSetNetwork(self.networkMode, self.networkServerAddress);
 }
 
 + (void)applyAudioSession

@@ -99,6 +99,8 @@
 	</dict>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>To play online with a PSO server on your local network, such as a friend's newserv.</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

@@ -18,6 +18,9 @@ void pso_widescreen_set_factor(float widen);
 // in 4:3.
 void pso_widescreen_set_hud_scale(float scale);
 
+// Whether the action palette is on screen (in the field, outside menus and dialogs).
+int pso_widescreen_action_palette_visible(void);
+
 #ifdef __cplusplus
 }
 #endif

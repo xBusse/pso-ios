@@ -64,6 +64,10 @@ step "Resources"
 # `make icon ICON=your.png` replaces it).
 mkdir -p "$APP/fonts"
 cp ios/resources/fonts/* "$APP/fonts/"
+# PSO's network settings file, installed on the memory card at boot when it's missing (see
+# InstallNetworkSettings in PlatformIOS.mm).
+mkdir -p "$APP/network"
+cp ios/resources/network/*.gci "$APP/network/"
 scripts/ios-icon.sh ios/icon/AppIcon.png "$APP" "$OUT/icon"
 
 step "Packaging"

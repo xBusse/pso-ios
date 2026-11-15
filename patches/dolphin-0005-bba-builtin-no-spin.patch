@@ -1,0 +1,16 @@
+diff --git a/Source/Core/Core/HW/EXI/BBA/BuiltIn.cpp b/Source/Core/Core/HW/EXI/BBA/BuiltIn.cpp
+index 459712a76b..f98d980211 100644
+--- a/Source/Core/Core/HW/EXI/BBA/BuiltIn.cpp
++++ b/Source/Core/Core/HW/EXI/BBA/BuiltIn.cpp
+@@ -176,6 +176,11 @@ void CEXIETHERNET::BuiltInBBAInterface::ReadThreadHandler(CEXIETHERNET::BuiltInB
+       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+     }
+ 
++    // The last frame (if any) has been delivered. Waiting on the game below must sleep too:
++    // with datasize left over, these loops would spin a core at 100% until the game reads,
++    // which starves the emulation on phones.
++    datasize = 0;
++
+     if (!self->m_read_enabled.IsSet())
+       continue;
+ 

@@ -30,6 +30,7 @@
 #define ADDR_set_perspective_projection_from_fov 0x803D676Cu
 #define ADDR_TWindowStatus_render 0x80271280u        // HP/TP panel, top left
 #define ADDR_TWindowActionPalette_render 0x80243DC0u // action palette, bottom right
+#define ADDR_TWindowEffectLight_render 0x802AD2ACu // press glow: palette slots (kind 0-2), keyboard keys (3-6)
 #define ADDR_TRaderMapCore_render 0x801FAC78u        // radar, top right
 #define ADDR_setup_overhead_projection 0x801F9314u   // the radar's projection
 #define SIZE_setup_overhead_projection 0x104u
@@ -44,6 +45,8 @@
 #define ADDR_fade_render_a 0x800F7E28u            // full-screen fades (area loads, warps):
 #define ADDR_fade_render_b 0x800F88D8u            //   TUnk_80499970 / TUnk_804999E8::render
 #define ADDR_TAdFadeGC_render 0x802C7C44u         // title / menu fades
+#define ADDR_draw_screen_quad 0x80084038u          // full-screen quads: motion blur (boss intros),
+#define ADDR_draw_textured_screen_quad 0x800842A4u //   screen copies (De Rol Le's tunnel), movie backdrop
 #define ADDR_TRaderMapCore_view_mode 0x805D5F3Cu       // 0 corner radar, 1/2 the menu's map views
 
 static float u32_to_f(uint32_t v) { float f; memcpy(&f, &v, 4); return f; }
@@ -56,11 +59,19 @@ static volatile float g_requested_hud = 1.0f;
 static float g_widen = 1.0f; // W, latched once per frame
 static float g_hud = 1.0f;   // HUD size, latched once per frame
 static int g_anchor_depth;   // nesting of anchored HUD windows being drawn
+static volatile uint32_t g_frame;                        // frames started
+static volatile uint32_t g_palette_frame = 0xFFFF0000u; // g_frame when the action palette was last drawn
 
 void pso_widescreen_set_factor(float widen) { g_requested = widen > 1.0f ? widen : 1.0f; }
 void pso_widescreen_set_hud_scale(float scale)
 {
     g_requested_hud = scale < 0.25f ? 0.25f : scale > 2.0f ? 2.0f : scale;
+}
+
+int pso_widescreen_action_palette_visible(void)
+{
+    // Drawn this frame or the one before (the query can land between frames).
+    return (uint32_t)(g_frame - g_palette_frame) <= 2u;
 }
 
 // Settings are latched where each frame starts (render_TMainTask) and again
@@ -172,6 +183,23 @@ static void anchor_end(CPUState* s)
 static void anchor_top_left(CPUState* s) { (void)s; anchor_place(g_hud, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
 static void anchor_bottom_right(CPUState* s) { (void)s; anchor_place(g_hud, 1.0f, 640.0f, 480.0f, 0.0f, 0.0f, 0.0f); }
 
+static void palette_begin(CPUState* s)
+{
+    g_palette_frame = g_frame;
+    anchor_bottom_right(s);
+}
+
+// The glow when an action palette slot is used is its own object, drawn at the slot's position
+// in the game's 640x480 layout. Place it as the palette is; keyboard key glows stay as they are.
+static void effect_light_begin(CPUState* s)
+{
+    const int16_t kind = (int16_t)moderngekko_mod_read(s, s->gpr[3] + 0x24u, 2);
+    if (kind >= 0 && kind <= 2)
+        anchor_bottom_right(s);
+    else
+        anchor_place(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
 // --- Main menu (START) -----------------------------------------------------
 //
 // In 4:3 the menu is a teal backdrop with a hole at the top right for the 3D
@@ -186,7 +214,7 @@ static void anchor_bottom_right(CPUState* s) { (void)s; anchor_place(g_hud, 1.0f
 // TWindowMessage and the others are used elsewhere too (NPC dialogue, for
 // one); they are moved only while the command list is up (drawn this frame or
 // the last).
-static uint32_t g_frame, g_menu_frame = 0xFFFFFFF0u;
+static uint32_t g_menu_frame = 0xFFFFFFF0u;
 static int menu_open(void) { return g_frame - g_menu_frame <= 1u; }
 
 static float menu_scale(void)
@@ -247,7 +275,9 @@ static void menu_status_begin(CPUState* s) { (void)s; menu_window_begin(1.0f, 64
 // --- Full-screen fades -------------------------------------------------------
 //
 // Fades to and from black (area loads, warps) are a 640x480 quad, which would
-// only cover the 4:3 middle; it is stretched across the screen.
+// only cover the 4:3 middle; it is stretched across the screen. So are the
+// quads that draw a copy of the frame back over it (the motion blur in boss
+// intros), which would otherwise land squeezed into the middle as ghost strips.
 
 static void stretch_begin(CPUState* s)
 {
@@ -370,14 +400,20 @@ static const ModernGekkoModHook hooks[] = {
     RECOMP_HOOK_RETURN(ADDR_GXLoadPosMtxImm, load_pos_mtx_return),
     RECOMP_HOOK(ADDR_TWindowStatus_render, anchor_top_left),
     RECOMP_HOOK_RETURN(ADDR_TWindowStatus_render, anchor_end),
-    RECOMP_HOOK(ADDR_TWindowActionPalette_render, anchor_bottom_right),
+    RECOMP_HOOK(ADDR_TWindowActionPalette_render, palette_begin),
     RECOMP_HOOK_RETURN(ADDR_TWindowActionPalette_render, anchor_end),
+    RECOMP_HOOK(ADDR_TWindowEffectLight_render, effect_light_begin),
+    RECOMP_HOOK_RETURN(ADDR_TWindowEffectLight_render, anchor_end),
     RECOMP_HOOK(ADDR_TRaderMapCore_render, radar_begin),
     RECOMP_HOOK_RETURN(ADDR_TRaderMapCore_render, anchor_end),
     RECOMP_HOOK(ADDR_fade_render_a, stretch_begin),
     RECOMP_HOOK_RETURN(ADDR_fade_render_a, anchor_end),
     RECOMP_HOOK(ADDR_fade_render_b, stretch_begin),
     RECOMP_HOOK_RETURN(ADDR_fade_render_b, anchor_end),
+    RECOMP_HOOK(ADDR_draw_screen_quad, stretch_begin),
+    RECOMP_HOOK_RETURN(ADDR_draw_screen_quad, anchor_end),
+    RECOMP_HOOK(ADDR_draw_textured_screen_quad, stretch_begin),
+    RECOMP_HOOK_RETURN(ADDR_draw_textured_screen_quad, anchor_end),
     RECOMP_HOOK(ADDR_TAdFadeGC_render, stretch_begin),
     RECOMP_HOOK_RETURN(ADDR_TAdFadeGC_render, anchor_end),
     RECOMP_HOOK(ADDR_TWindowMenuMainMenu_render, menu_list_begin),

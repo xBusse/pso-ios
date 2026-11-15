@@ -1,0 +1,22 @@
+diff --git a/Source/Core/Core/HW/EXI/EXI.cpp b/Source/Core/Core/HW/EXI/EXI.cpp
+index ba3e88f80d..f28fe485b9 100644
+--- a/Source/Core/Core/HW/EXI/EXI.cpp
++++ b/Source/Core/Core/HW/EXI/EXI.cpp
+@@ -127,10 +127,13 @@ void ExpansionInterfaceManager::Init(const Sram* override_sram)
+     const bool shift_jis =
+         Config::ToGameCubeRegion(SConfig::GetInstance().m_region) == DiscIO::Region::NTSC_J;
+     const CardFlashId& flash_id = sram.settings_ex.flash_id[Memcard::SLOT_A];
+-    const u32 rtc_bias = sram.settings.rtc_bias;
+-    const u32 sram_language = static_cast<u32>(sram.settings.language);
+-    const u64 format_time =
+-        Common::Timer::GetLocalTimeSinceJan1970() - ExpansionInterface::CEXIIPL::GC_EPOCH;
++    // A fixed format time, RTC bias and language keep the GCI-folder card's serial number the
++    // same on every boot and every device. PSO's network settings file (sega_network_information)
++    // is tied to that serial and reads as corrupt once it changes. Dolphin only re-signs
++    // PSO_SYSTEM for a new serial, not this file. The iOS app ships a settings file made on it.
++    const u32 rtc_bias = 0;
++    const u32 sram_language = 0;
++    const u64 format_time = 0x20000000;
+ 
+     for (u32 i = 0; i < MAX_EXI_CHANNELS; i++)
+     {

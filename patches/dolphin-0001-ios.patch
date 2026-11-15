@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9f837ec..2904682 100644
+index 9f837eca31..2904682514 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -661,8 +661,8 @@ if(ENABLE_VULKAN)
@@ -32,7 +32,7 @@ index 9f837ec..2904682 100644
  endif()
  
 diff --git a/Source/Core/Common/CMakeLists.txt b/Source/Core/Common/CMakeLists.txt
-index 807dca3..b181e63 100644
+index 807dca300d..b181e6371f 100644
 --- a/Source/Core/Common/CMakeLists.txt
 +++ b/Source/Core/Common/CMakeLists.txt
 @@ -327,7 +327,7 @@ if(WIN32)
@@ -45,7 +45,7 @@ index 807dca3..b181e63 100644
      GL/GLInterface/AGL.h
      GL/GLInterface/AGL.mm
 diff --git a/Source/Core/Common/FilesystemWatcher.cpp b/Source/Core/Common/FilesystemWatcher.cpp
-index 9497023..f68057d 100644
+index 94970232b2..f68057d5d8 100644
 --- a/Source/Core/Common/FilesystemWatcher.cpp
 +++ b/Source/Core/Common/FilesystemWatcher.cpp
 @@ -3,7 +3,21 @@
@@ -89,7 +89,7 @@ index 9497023..f68057d 100644
  
  void FilesystemWatcher::Unwatch(const std::string& path)
 diff --git a/Source/Core/Common/GL/GLContext.cpp b/Source/Core/Common/GL/GLContext.cpp
-index eef6896..67db279 100644
+index eef689616e..67db2799e6 100644
 --- a/Source/Core/Common/GL/GLContext.cpp
 +++ b/Source/Core/Common/GL/GLContext.cpp
 @@ -5,7 +5,7 @@
@@ -111,7 +111,7 @@ index eef6896..67db279 100644
      context = std::make_unique<GLContextAGL>();
  #endif
 diff --git a/Source/Core/Common/MemoryUtil.cpp b/Source/Core/Common/MemoryUtil.cpp
-index 0d66890..883a94b 100644
+index 0d66890d2b..883a94bb0e 100644
 --- a/Source/Core/Common/MemoryUtil.cpp
 +++ b/Source/Core/Common/MemoryUtil.cpp
 @@ -93,7 +93,7 @@ static int& JITPageWriteNestCounter()
@@ -133,7 +133,7 @@ index 0d66890..883a94b 100644
    {
      pthread_jit_write_protect_np(1);
 diff --git a/Source/Core/Core/CMakeLists.txt b/Source/Core/Core/CMakeLists.txt
-index f30654c..dbb6101 100644
+index f30654ce5d..dbb6101f2f 100644
 --- a/Source/Core/Core/CMakeLists.txt
 +++ b/Source/Core/Core/CMakeLists.txt
 @@ -766,8 +766,6 @@ PUBLIC
@@ -158,22 +158,30 @@ index f30654c..dbb6101 100644
    target_include_directories(core PRIVATE ${LIBUDEV_INCLUDE_DIR})
    target_link_libraries(core PRIVATE ${LIBUDEV_LIBRARY})
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
-index e3581cc..ff23abc 100644
+index e3581cc938..a89704f5b4 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
 +++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
-@@ -185,7 +185,9 @@ void StaticRecompCore::Init()
+@@ -185,10 +185,15 @@ void StaticRecompCore::Init()
    m_lockstep_verifier = std::make_unique<StaticRecompLockstep::StaticRecompLockstepVerifier>(*this);
    m_lockstep_verifier->Init();
  
 -#ifdef _M_ARM_64
+-  m_fallback_jit = std::make_unique<JitArm64>(m_system);
 +#if defined(DOLPHIN_NO_JIT)
 +  // Executable memory isn't available; uncovered code runs on the interpreter.
 +#elif defined(_M_ARM_64)
-   m_fallback_jit = std::make_unique<JitArm64>(m_system);
++  // STATICRECOMP_INTERPRETER=1 runs uncovered code on the interpreter, as on iOS.
++  if (!std::getenv("STATICRECOMP_INTERPRETER"))
++    m_fallback_jit = std::make_unique<JitArm64>(m_system);
  #elif defined(_M_X86_64)
-   m_fallback_jit = std::make_unique<Jit64>(m_system);
+-  m_fallback_jit = std::make_unique<Jit64>(m_system);
++  if (!std::getenv("STATICRECOMP_INTERPRETER"))
++    m_fallback_jit = std::make_unique<Jit64>(m_system);
+ #endif
+   if (m_fallback_jit)
+   {
 diff --git a/Source/Core/InputCommon/CMakeLists.txt b/Source/Core/InputCommon/CMakeLists.txt
-index ddf8c30..d4c83ea 100644
+index ddf8c30cf4..d4c83ea579 100644
 --- a/Source/Core/InputCommon/CMakeLists.txt
 +++ b/Source/Core/InputCommon/CMakeLists.txt
 @@ -113,7 +113,7 @@ if(WIN32)
@@ -195,7 +203,7 @@ index ddf8c30..d4c83ea 100644
  endif()
  
 diff --git a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h b/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
-index 8f7f4ba..3f11a42 100644
+index 8f7f4baf40..3f11a429be 100644
 --- a/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
 +++ b/Source/Core/InputCommon/ControllerInterface/ControllerInterface.h
 @@ -22,7 +22,7 @@
@@ -208,7 +216,7 @@ index 8f7f4ba..3f11a42 100644
  #endif
  #if defined(HAVE_LIBEVDEV) && defined(HAVE_LIBUDEV)
 diff --git a/Source/Core/InputCommon/GCAdapter.cpp b/Source/Core/InputCommon/GCAdapter.cpp
-index 2b4f9bd..c1d3163 100644
+index 2b4f9bdd70..c1d3163b36 100644
 --- a/Source/Core/InputCommon/GCAdapter.cpp
 +++ b/Source/Core/InputCommon/GCAdapter.cpp
 @@ -3,7 +3,11 @@
@@ -225,7 +233,7 @@ index 2b4f9bd..c1d3163 100644
  #define GCADAPTER_USE_ANDROID_IMPLEMENTATION false
  #else
 diff --git a/Source/Core/UICommon/UICommon.cpp b/Source/Core/UICommon/UICommon.cpp
-index 01dc87b..2ff5b27 100644
+index 01dc87bc1e..2ff5b27d35 100644
 --- a/Source/Core/UICommon/UICommon.cpp
 +++ b/Source/Core/UICommon/UICommon.cpp
 @@ -55,7 +55,7 @@
@@ -247,7 +255,7 @@ index 01dc87b..2ff5b27 100644
    if (inhibit)
    {
 diff --git a/Source/Core/VideoBackends/CMakeLists.txt b/Source/Core/VideoBackends/CMakeLists.txt
-index e56dd03..a87bca0 100644
+index e56dd03100..a87bca082a 100644
 --- a/Source/Core/VideoBackends/CMakeLists.txt
 +++ b/Source/Core/VideoBackends/CMakeLists.txt
 @@ -1,6 +1,8 @@
@@ -262,7 +270,7 @@ index e56dd03..a87bca0 100644
  if(WIN32)
    if(MSVC)
 diff --git a/Source/Core/VideoBackends/Metal/MTLGfx.mm b/Source/Core/VideoBackends/Metal/MTLGfx.mm
-index 4b744fe..f827756 100644
+index 4b744fe511..f8277562e0 100644
 --- a/Source/Core/VideoBackends/Metal/MTLGfx.mm
 +++ b/Source/Core/VideoBackends/Metal/MTLGfx.mm
 @@ -21,7 +21,9 @@
@@ -287,7 +295,7 @@ index 4b744fe..f827756 100644
    if (bits & CONFIG_CHANGE_BIT_ANISOTROPY)
    {
 diff --git a/Source/Core/VideoBackends/Metal/MTLUtil.h b/Source/Core/VideoBackends/Metal/MTLUtil.h
-index 1752c82..935475f 100644
+index 1752c82aa5..935475faad 100644
 --- a/Source/Core/VideoBackends/Metal/MTLUtil.h
 +++ b/Source/Core/VideoBackends/Metal/MTLUtil.h
 @@ -3,7 +3,10 @@
@@ -302,7 +310,7 @@ index 1752c82..935475f 100644
  
  #include <vector>
 diff --git a/Source/Core/VideoBackends/Metal/MTLUtil.mm b/Source/Core/VideoBackends/Metal/MTLUtil.mm
-index 9298c5b..4b076be 100644
+index 9298c5b8ac..4b076be9f3 100644
 --- a/Source/Core/VideoBackends/Metal/MTLUtil.mm
 +++ b/Source/Core/VideoBackends/Metal/MTLUtil.mm
 @@ -78,8 +78,12 @@ void Metal::Util::PopulateBackendInfo(BackendInfo* backend_info)
@@ -319,7 +327,7 @@ index 9298c5b..4b076be 100644
  
  void Metal::Util::PopulateBackendInfoAdapters(BackendInfo* backend_info,
 diff --git a/Source/Core/VideoCommon/VertexLoaderBase.cpp b/Source/Core/VideoCommon/VertexLoaderBase.cpp
-index 98eb651..4a677d8 100644
+index 98eb651796..4a677d85b3 100644
 --- a/Source/Core/VideoCommon/VertexLoaderBase.cpp
 +++ b/Source/Core/VideoCommon/VertexLoaderBase.cpp
 @@ -25,7 +25,7 @@

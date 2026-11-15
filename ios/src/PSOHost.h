@@ -73,10 +73,28 @@ void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hun
 // How fast the C-stick turns the camera, in percent (mods/cheats).
 void PSOSetCameraSpeed(int percent);
 
+// Online play: which network adapter the GameCube gets.
+typedef enum
+{
+  PSONetworkOff = 0,
+  // Dolphin's built-in adapter: the game uses this phone's internet connection, and its DNS
+  // lookups go to `address`, a PSO server's DNS that points the game at that server.
+  PSONetworkPublic,
+  // A tapserver link to a newserv server's IP stack simulator at `address` (host[:port], port
+  // 5059 if left out). newserv gives the game its IP address itself.
+  PSONetworkPrivate,
+} PSONetworkMode;
+
+// Safe before the game starts (applied at boot) or while it runs (the adapter is swapped,
+// like unplugging and replugging it).
+void PSOSetNetwork(PSONetworkMode mode, NSString* address);
+
 // Restarts audio output after an interruption (phone call, Siri, another app).
 void PSORestartAudio(void);
 
 bool PSOIsGameRunning(void);
+// Whether the action palette is on screen: in the field, not in a menu or dialog.
+bool PSOIsActionPaletteVisible(void);
 
 // Extracts a GameCube disc image (ISO, CISO, GCZ, RVZ, WIA) into `dest` in the
 // layout the game expects, checking it's the right game. `progress` (0..1) and

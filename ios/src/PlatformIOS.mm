@@ -20,6 +20,9 @@
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
+#include "Core/CoreTiming.h"
+#include "Core/HW/EXI/EXI.h"
+#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
 #include "InputCommon/ControllerInterface/Touch/InputOverrider.h"
@@ -49,6 +52,13 @@ struct VideoSettings
 std::mutex s_settings_mutex;
 VideoSettings s_video;
 int s_volume = 100;
+
+struct NetworkSettings
+{
+  PSONetworkMode mode = PSONetworkOff;
+  std::string address;
+};
+NetworkSettings s_network;
 
 // R toggle state. Only touched on the main thread (touch + controller input).
 bool s_r_toggle = false;
@@ -94,6 +104,35 @@ void ApplySettingsNow()
   Config::SetBase(Config::MAIN_AUDIO_VOLUME, std::clamp(volume, 0, 100));
   if (s_booted)
     AudioCommon::UpdateSoundStream(Core::System::GetInstance());
+}
+
+// Points Dolphin's serial port 1 at the adapter for the chosen network mode. Returns the
+// device type, for swapping it live.
+ExpansionInterface::EXIDeviceType ApplyNetworkConfig()
+{
+  NetworkSettings n;
+  {
+    std::lock_guard lock(s_settings_mutex);
+    n = s_network;
+  }
+  using ExpansionInterface::EXIDeviceType;
+  EXIDeviceType type = EXIDeviceType::None;
+  if (n.mode == PSONetworkPublic && !n.address.empty())
+  {
+    type = EXIDeviceType::EthernetBuiltIn;
+    Config::SetBase(Config::MAIN_BBA_BUILTIN_DNS, n.address);
+  }
+  else if (n.mode == PSONetworkPrivate && !n.address.empty())
+  {
+    type = EXIDeviceType::EthernetTapServer;
+    std::string dest = n.address;
+    if (dest.find(':') == std::string::npos)
+      dest += ":5059";
+    Config::SetBase(Config::MAIN_BBA_TAPSERVER_DESTINATION, dest);
+  }
+  Config::SetBase(Config::MAIN_SERIAL_PORT_1, type);
+  printf("PSO: network mode=%d address=%s\n", int(n.mode), n.address.c_str());
+  return type;
 }
 
 // Runs `job` on the host loop thread while the game is up, so Dolphin's state
@@ -177,6 +216,34 @@ void SetUpLogging(NSString* user_dir)
   }
 }
 
+// Without a network settings file on the memory card, ONLINE GAME hands over to Sega's network
+// setup program (iwanaga.dol on the disc). Only PsoV3.dol is recompiled, so that program runs on
+// the interpreter and is far too slow on a phone. The app ships a settings file made on this
+// build's memory card (automatic IP and DNS) and puts it on the card when there isn't one. The
+// file is tied to the card's serial number, which dolphin-0004 keeps the same on every device.
+void InstallNetworkSettings(NSString* user_dir)
+{
+  NSFileManager* fm = NSFileManager.defaultManager;
+  NSString* card = [user_dir stringByAppendingPathComponent:@"GC/USA/Card A"];
+  for (NSString* name in [fm contentsOfDirectoryAtPath:card error:nil])
+  {
+    if ([name hasSuffix:@"sega_network_information.gci"])
+      return;
+  }
+  NSString* bundled = [NSBundle.mainBundle pathForResource:@"8P-G9AE-sega_network_information"
+                                                    ofType:@"gci"
+                                               inDirectory:@"network"];
+  if (!bundled)
+    return;
+  [fm createDirectoryAtPath:card withIntermediateDirectories:YES attributes:nil error:nil];
+  NSError* error = nil;
+  if ([fm copyItemAtPath:bundled toPath:[card stringByAppendingPathComponent:bundled.lastPathComponent]
+                   error:&error])
+    printf("PSO: installed network settings on the memory card\n");
+  else
+    printf("PSO: couldn't install network settings: %s\n", error.localizedDescription.UTF8String);
+}
+
 ciface::Touch::ControlID ToControlID(PSOInput input)
 {
   using namespace ciface::Touch;
@@ -218,6 +285,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
                   void (^on_exit)(NSString* error))
 {
   SetUpLogging(user_dir);
+  InstallNetworkSettings(user_dir);
   printf("PSO: game=%s user=%s module=%s\n", game_dir.UTF8String, user_dir.UTF8String,
          module_path.UTF8String);
   printf("PSO: layer bounds=%.0fx%.0f scale=%.1f\n", s_layer.bounds.size.width,
@@ -252,6 +320,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
       ciface::Touch::RegisterGameCubeInputOverrider(0);
       s_input_registered = true;
       ApplySettingsNow();
+      ApplyNetworkConfig();
       s_booted = true;
 
       {
@@ -387,6 +456,25 @@ void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_heigh
   RunOnHost([](Core::System&) { ApplySettingsNow(); });
 }
 
+void PSOSetNetwork(PSONetworkMode mode, NSString* address)
+{
+  {
+    std::lock_guard lock(s_settings_mutex);
+    const std::string addr = address.UTF8String ?: "";
+    // Settings are re-sent wholesale (e.g. on a display change); replugging the adapter then
+    // would drop a live connection.
+    if (s_network.mode == mode && s_network.address == addr)
+      return;
+    s_network = {mode, addr};
+  }
+  RunOnHost([](Core::System& system) {
+    const auto type = ApplyNetworkConfig();
+    // Unplugs the adapter for a second and plugs in the new one, as Dolphin's own settings do.
+    system.GetExpansionInterface().ChangeDevice(ExpansionInterface::Slot::SP1, type,
+                                                CoreTiming::FromThread::NON_CPU);
+  });
+}
+
 void PSOSetHUDScale(int percent)
 {
   pso_widescreen_set_hud_scale(std::clamp(percent, 25, 200) / 100.0f);
@@ -433,4 +521,9 @@ void PSORestartAudio(void)
 bool PSOIsGameRunning(void)
 {
   return s_booted;
+}
+
+bool PSOIsActionPaletteVisible(void)
+{
+  return s_booted && pso_widescreen_action_palette_visible();
 }

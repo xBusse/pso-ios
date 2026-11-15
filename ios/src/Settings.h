@@ -62,6 +62,14 @@ typedef NS_ENUM(NSInteger, PSOPadButton) {
 + (NSArray<NSNumber*>*)expMultipliers;
 + (NSArray<NSNumber*>*)rareMultipliers;
 
+// Online play. Mods are off while on a public server (see cheatsAllowed).
+@property(class, nonatomic) PSONetworkMode networkMode;
+@property(class, nonatomic, copy) NSString* publicServer;   // DNS address of a public PSO server
+@property(class, nonatomic, copy) NSString* privateServer;  // newserv host[:port]
++ (NSString*)defaultPublicServer;
++ (NSString*)networkServerAddress;  // the address for the current mode
++ (BOOL)cheatsAllowed;
+
 // Per-control overrides from the layout editor: id -> {x, y (fraction of the
 // safe area), scale, opacity}. Missing keys use the defaults.
 + (NSDictionary<NSString*, NSDictionary<NSString*, NSNumber*>*>*)touchLayout;
