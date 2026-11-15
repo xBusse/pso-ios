@@ -101,7 +101,15 @@ $(WIDESCREEN_MOD): mods/widescreen/widescreen.c mods/widescreen/pso_widescreen.h
 	@mkdir -p $(dir $@)
 	cc -O2 -shared -fvisibility=hidden -DPSO_WIDESCREEN_DYLIB -I $(MODERNGEKKO_DIR)/include $< -o $@
 
-run: moderngekko extract user-config $(WIDESCREEN_MOD)
+# Cheats mod (mods/cheats). On the Mac, PSO_CHEATS=meseta,hp,mag,exp=4,rare=8
+# (any subset) turns cheats on; the iOS app links it in and drives it from
+# Settings > Mods.
+CHEATS_MOD := $(USER_DIR)/Mods/pso_cheats.mgm.dylib
+$(CHEATS_MOD): mods/cheats/cheats.c mods/cheats/pso_cheats.h
+	@mkdir -p $(dir $@)
+	cc -O2 -Wall -shared -fvisibility=hidden -DPSO_CHEATS_DYLIB -I $(MODERNGEKKO_DIR)/include $< -o $@
+
+run: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
 	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- --user-dir $(USER_DIR) $(RUN_ARGS)
 
 # iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the

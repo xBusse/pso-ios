@@ -67,6 +67,9 @@ void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_heigh
 void PSOSetVolume(int percent);
 // HUD size in percent of the game's own (status panel, action palette, radar).
 void PSOSetHUDScale(int percent);
+// Cheats (mods/cheats), applied live. Multipliers of 1 are off.
+void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hungry, int exp_multiplier,
+                  int rare_multiplier);
 
 // Restarts audio output after an interruption (phone call, Siri, another app).
 void PSORestartAudio(void);

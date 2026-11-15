@@ -81,6 +81,7 @@ add_executable(PSO MACOSX_BUNDLE
   src/TouchControls.mm
   src/TouchEditor.mm
   ../mods/widescreen/widescreen.c
+  ../mods/cheats/cheats.c
 )
 add_dependencies(PSO ${PSO_MODULE_TARGET})
 
@@ -102,6 +103,7 @@ target_compile_definitions(PSO PRIVATE _M_ARM_64=1 _ARCH_64=1
 target_include_directories(PSO PRIVATE
   "${MG_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/../mods/widescreen"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../mods/cheats"
   "${DOLPHIN_DIR}/Source/Core"
   "${CMAKE_BINARY_DIR}/moderngekko/vendor/dolphin/Source/Core")
 

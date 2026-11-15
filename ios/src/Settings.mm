@@ -105,6 +105,78 @@ static CGSize s_screen = CGSizeMake(16, 9);
   Set(@"touchOpacity", @(MAX(0.1, MIN(1.0, v))));
 }
 
+// ---- Mods ----
+
+static void ApplyCheats(void)
+{
+  PSOSetCheats(PSOSettings.infiniteMeseta, PSOSettings.infiniteHpTp, PSOSettings.magAlwaysHungry,
+               (int)PSOSettings.expMultiplier, (int)PSOSettings.rareMultiplier);
+}
+
+static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
+{
+  const NSInteger v = IntegerOr(key, 1);
+  return [allowed containsObject:@(v)] ? v : 1;
+}
+
++ (BOOL)infiniteMeseta
+{
+  return [Defaults() boolForKey:@"infiniteMeseta"];
+}
++ (void)setInfiniteMeseta:(BOOL)v
+{
+  Set(@"infiniteMeseta", @(v));
+  ApplyCheats();
+}
+
++ (BOOL)infiniteHpTp
+{
+  return [Defaults() boolForKey:@"infiniteHpTp"];
+}
++ (void)setInfiniteHpTp:(BOOL)v
+{
+  Set(@"infiniteHpTp", @(v));
+  ApplyCheats();
+}
+
++ (BOOL)magAlwaysHungry
+{
+  return [Defaults() boolForKey:@"magAlwaysHungry"];
+}
++ (void)setMagAlwaysHungry:(BOOL)v
+{
+  Set(@"magAlwaysHungry", @(v));
+  ApplyCheats();
+}
+
++ (NSArray<NSNumber*>*)expMultipliers
+{
+  return @[ @1, @2, @3, @5, @10 ];
+}
++ (NSInteger)expMultiplier
+{
+  return OneOf(@"expMultiplier", self.expMultipliers);
+}
++ (void)setExpMultiplier:(NSInteger)v
+{
+  Set(@"expMultiplier", @(v));
+  ApplyCheats();
+}
+
++ (NSArray<NSNumber*>*)rareMultipliers
+{
+  return @[ @1, @2, @4, @8, @16, @32 ];
+}
++ (NSInteger)rareMultiplier
+{
+  return OneOf(@"rareMultiplier", self.rareMultipliers);
+}
++ (void)setRareMultiplier:(NSInteger)v
+{
+  Set(@"rareMultiplier", @(v));
+  ApplyCheats();
+}
+
 + (NSDictionary*)touchLayout
 {
   id v = [Defaults() objectForKey:@"touchLayout"];
@@ -138,6 +210,7 @@ static CGSize s_screen = CGSizeMake(16, 9);
   PSOSetVolume((int)self.volume);
   PSOSetHUDScale((int)self.hudScale);
   PSOSetRToggle(self.rToggle);
+  ApplyCheats();
 }
 
 + (void)applyAudioSession

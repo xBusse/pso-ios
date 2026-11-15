@@ -24,6 +24,15 @@ typedef NS_ENUM(NSInteger, PSOTouchVisibility) {
 @property(class, nonatomic) PSOTouchVisibility touchVisibility;
 @property(class, nonatomic) CGFloat touchOpacity;       // 0.1..1, all controls
 
+// Mods (cheats).
+@property(class, nonatomic) BOOL infiniteMeseta;
+@property(class, nonatomic) BOOL infiniteHpTp;
+@property(class, nonatomic) BOOL magAlwaysHungry;
+@property(class, nonatomic) NSInteger expMultiplier;   // 1 = off
+@property(class, nonatomic) NSInteger rareMultiplier;  // 1 = off
++ (NSArray<NSNumber*>*)expMultipliers;
++ (NSArray<NSNumber*>*)rareMultipliers;
+
 // Per-control overrides from the layout editor: id -> {x, y (fraction of the
 // safe area), scale, opacity}. Missing keys use the defaults.
 + (NSDictionary<NSString*, NSDictionary<NSString*, NSNumber*>*>*)touchLayout;

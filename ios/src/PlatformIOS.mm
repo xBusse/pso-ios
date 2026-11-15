@@ -25,6 +25,7 @@
 #include "InputCommon/ControllerInterface/Touch/InputOverrider.h"
 #include "VideoCommon/VideoConfig.h"
 #include "moderngekko/runtime.hpp"
+#include "pso_cheats.h"
 #include "pso_widescreen.h"
 
 namespace
@@ -232,6 +233,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     config.user_directory = user;
     config.module = moderngekko::ModuleSource::DynamicPath(module);
     config.attached_mods.push_back(pso_widescreen_descriptor());
+    config.attached_mods.push_back(pso_cheats_descriptor());
     config.graphics.backend = "Metal";
     config.show_fps_in_title = false;
 
@@ -388,6 +390,16 @@ void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_heigh
 void PSOSetHUDScale(int percent)
 {
   pso_widescreen_set_hud_scale(std::clamp(percent, 25, 200) / 100.0f);
+}
+
+void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hungry, int exp_multiplier,
+                  int rare_multiplier)
+{
+  pso_cheats_set_infinite_meseta(infinite_meseta);
+  pso_cheats_set_infinite_hp_tp(infinite_hp_tp);
+  pso_cheats_set_mag_always_hungry(mag_always_hungry);
+  pso_cheats_set_exp_multiplier(exp_multiplier);
+  pso_cheats_set_rare_multiplier(rare_multiplier);
 }
 
 void PSOSetVolume(int percent)

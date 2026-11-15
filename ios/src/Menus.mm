@@ -59,6 +59,78 @@ static NSString* OnOff(BOOL on, NSString* yes, NSString* no)
   return on ? yes : no;
 }
 
+// Steps through `values` (wrapping) from `current`.
+static NSInteger Cycle(NSArray<NSNumber*>* values, NSInteger current, NSInteger d)
+{
+  NSInteger i = (NSInteger)[values indexOfObject:@(current)];
+  if (i == NSNotFound)
+    i = 0;
+  const NSInteger n = (NSInteger)values.count;
+  return values[(NSUInteger)(((i + d) % n + n) % n)].integerValue;
+}
+
+static NSString* Multiplier(NSInteger m)
+{
+  return m <= 1 ? @"Off" : [NSString stringWithFormat:@"%ldx", (long)m];
+}
+
+static PSOPageViewController* MakeModsPage(BOOL overGame)
+{
+  PSOPageViewController* page = [PSOPageViewController new];
+  page.pageTitle = @"Mods";
+  page.overGame = overGame;
+  page.smallItems = YES;
+  page.valueColumn = 8.2;
+  __weak PSOPageViewController* weakPage = page;
+
+  page.items = @[
+    [PSOMenuItem choice:@"INFINITE MESETA"
+                   help:@"Keeps your meseta at 999,999."
+                  value:^{
+                    return OnOff(PSOSettings.infiniteMeseta, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.infiniteMeseta = !PSOSettings.infiniteMeseta;
+                 }],
+    [PSOMenuItem choice:@"INFINITE HP / TP"
+                   help:@"Keeps HP and TP full. Hits still knock you down but can't kill you."
+                  value:^{
+                    return OnOff(PSOSettings.infiniteHpTp, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.infiniteHpTp = !PSOSettings.infiniteHpTp;
+                 }],
+    [PSOMenuItem choice:@"MAG ALWAYS HUNGRY"
+                   help:@"Feed your mag any time, without waiting between feedings."
+                  value:^{
+                    return OnOff(PSOSettings.magAlwaysHungry, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.magAlwaysHungry = !PSOSettings.magAlwaysHungry;
+                 }],
+    [PSOMenuItem choice:@"EXP BOOST"
+                   help:@"Multiplies the EXP you earn."
+                  value:^{
+                    return Multiplier(PSOSettings.expMultiplier);
+                  }
+                 adjust:^(NSInteger d) {
+                   PSOSettings.expMultiplier = Cycle(PSOSettings.expMultipliers, PSOSettings.expMultiplier, d);
+                 }],
+    [PSOMenuItem choice:@"RARE DROP BOOST"
+                   help:@"Multiplies the chance of rare items from enemies and boxes."
+                  value:^{
+                    return Multiplier(PSOSettings.rareMultiplier);
+                  }
+                 adjust:^(NSInteger d) {
+                   PSOSettings.rareMultiplier = Cycle(PSOSettings.rareMultipliers, PSOSettings.rareMultiplier, d);
+                 }],
+    [PSOMenuItem action:@"BACK" help:nil run:^{
+      [weakPage goBack];
+    }],
+  ];
+  return page;
+}
+
 PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
 {
   PSOPageViewController* page = [PSOPageViewController new];
@@ -70,8 +142,8 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
 
   page.items = @[
     [PSOMenuItem choice:@"DISPLAY"
-                   help:@"Fill screen widens the 3D view to the whole screen and moves the HUD to its corners "
-                        @"(menus stay 4:3). Original keeps the GameCube picture with bars at the sides."
+                   help:@"Fill screen widens the 3D view to the whole screen and moves the HUD and the START "
+                        @"menu to its corners. Original keeps the GameCube picture with bars at the sides."
                   value:^{
                     return [PSOSettings displayModeName:PSOSettings.displayMode];
                   }
@@ -88,7 +160,7 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                    PSOSettings.resolutionScale = (PSOSettings.resolutionScale - 1 + d + 4) % 4 + 1;
                  }],
     [PSOMenuItem choice:@"HUD SIZE"
-                   help:@"Size of the HP/TP panel, action palette and radar. Each stays in its corner."
+                   help:@"Size of the HP/TP panel, action palette, radar and START menu. Each stays in its corner."
                   value:^{
                     return [NSString stringWithFormat:@"%ld%%", (long)PSOSettings.hudScale];
                   }
@@ -156,6 +228,12 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                       [weakPage presentViewController:editor animated:YES completion:^{
                         weakPage.view.alpha = 0;
                       }];
+                    }],
+    [PSOMenuItem action:@"MODS"
+                   help:@"Cheats: infinite meseta, infinite HP/TP, a mag you can always feed, EXP and rare drop "
+                        @"boosts."
+                    run:^{
+                      [weakPage showPage:MakeModsPage(overGame)];
                     }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];
