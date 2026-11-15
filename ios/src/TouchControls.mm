@@ -28,6 +28,20 @@ struct Control
   CAShapeLayer* knob = nil;  // Stick only
   CATextLayer* text = nil;
 };
+// The game's action palette (bottom right): its three slots, in the game's
+// 640x480 layout at HUD size 100%, measured from the game. The border colors
+// match the GameCube buttons: green A, red B, grey X.
+struct PaletteSlot
+{
+  PSOInput input;
+  CGFloat x, y;
+};
+constexpr PaletteSlot kPaletteSlots[] = {
+    {PSOInputA, 546, 391},
+    {PSOInputB, 501, 417},
+    {PSOInputX, 591, 368},
+};
+constexpr CGFloat kPaletteSlotRadius = 27;
 }  // namespace
 
 @implementation PSOTouchControls
@@ -39,6 +53,15 @@ struct Control
   int _selected;
   CGPoint _dragOffset;
   BOOL _rLatched;
+  PSOStickMode _stickMode;
+  BOOL _stickHeld;
+  // A drag on empty space in the right half turns the camera (the C-stick).
+  __weak UITouch* _cameraTouch;
+  CGPoint _cameraStart;
+  BOOL _cameraSwipe;
+  // Touches on the game's action palette, and the button each one holds.
+  NSMapTable<UITouch*, NSNumber*>* _paletteTouch;
+  BOOL _tapPalette;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -48,6 +71,7 @@ struct Control
     self.multipleTouchEnabled = YES;
     self.backgroundColor = UIColor.clearColor;
     _touchControl = [NSMapTable weakToStrongObjectsMapTable];
+    _paletteTouch = [NSMapTable weakToStrongObjectsMapTable];
     _selected = -1;
 
     auto add = [&](Kind kind, PSOInput input, NSString* ident, NSString* label) {
@@ -90,6 +114,9 @@ struct Control
                                                name:PSOSettingsDidChangeNotification
                                              object:nil];
     _opacity = PSOSettings.touchOpacity;
+    _stickMode = PSOSettings.stickMode;
+    _tapPalette = PSOSettings.tapPalette;
+    _cameraSwipe = PSOSettings.cameraSwipe;
   }
   return self;
 }
@@ -102,6 +129,9 @@ struct Control
 - (void)settingsChanged
 {
   _opacity = PSOSettings.touchOpacity;
+  _stickMode = PSOSettings.stickMode;
+  _tapPalette = PSOSettings.tapPalette;
+  _cameraSwipe = PSOSettings.cameraSwipe;
   [self setNeedsLayout];
 }
 
@@ -183,6 +213,8 @@ struct Control
   [CATransaction setDisableActions:YES];
   for (Control& c : _controls)
   {
+    if (c.kind == Kind::Stick && _stickHeld)
+      continue;  // a floating stick stays under the thumb
     [self placeControl:c];
     [self drawControl:c];
   }
@@ -219,6 +251,8 @@ struct Control
   CGFloat idle = _opacity * c.alpha;
   if (self.editing)
     idle = MAX(idle, 0.25);  // never invisible while editing
+  else if (c.kind == Kind::Stick && _stickMode != PSOStickAlways && !_stickHeld)
+    idle = 0;  // only drawn while held
   const CGFloat lit = MIN(1.0, MAX(idle * 2.0, idle + 0.3));
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
@@ -249,6 +283,17 @@ struct Control
       best = static_cast<int>(i);
       best_d = d / reach;
     }
+  }
+  if (!self.editing && _stickMode == PSOStickFloating && !_stickHeld && p.x < CGRectGetMidX(self.bounds))
+  {
+    // The stick appears under the thumb, unless another control was hit.
+    const BOOL onOther = best >= 0 && _controls[best].kind != Kind::Stick &&
+                         std::hypot(p.x - _controls[best].center.x, p.y - _controls[best].center.y) <=
+                             _controls[best].radius * 1.25;
+    if (!onOther)
+      for (size_t i = 0; i < _controls.size(); ++i)
+        if (_controls[i].kind == Kind::Stick)
+          return static_cast<int>(i);
   }
   return best;
 }
@@ -307,7 +352,9 @@ struct Control
   case Kind::Stick:
     PSOClearInput(PSOInputStickX);
     PSOClearInput(PSOInputStickY);
-    [self placeKnob:c offset:CGPointZero];
+    _stickHeld = NO;
+    [self placeControl:c];
+    [self drawControl:c];
     break;
   case Kind::Dpad:
     PSOClearInput(PSOInputDpadUp);
@@ -319,8 +366,86 @@ struct Control
   [self setPressed:c pressed:NO];
 }
 
+// ---- Action palette ------------------------------------------------------------
+//
+// Where the game's picture is and how wide its 2D layout is (as in
+// ApplySettingsNow and the widescreen mod): the 640x480 layout spans the middle
+// 1/W of the picture, and the HUD's right side is moved out to the picture's
+// edge and sized about the bottom-right corner.
+
+- (CGRect)pictureRect:(CGFloat*)widen
+{
+  const CGRect b = self.bounds;
+  CGFloat aspect = 4.0 / 3.0;
+  *widen = 1;
+  switch (PSOSettings.displayMode)
+  {
+  case PSODisplayStretch: return b;
+  case PSODisplayOriginal: break;
+  case PSODisplayWidescreen: aspect = 16.0 / 9.0; break;
+  case PSODisplayFill: aspect = b.size.width / MAX(1.0, b.size.height); break;
+  }
+  *widen = MAX(1.0, aspect / (4.0 / 3.0));
+  CGSize size = b.size;
+  if (size.width / size.height > aspect)
+    size.width = size.height * aspect;
+  else
+    size.height = size.width / aspect;
+  return CGRectMake(CGRectGetMidX(b) - size.width / 2, CGRectGetMidY(b) - size.height / 2, size.width, size.height);
+}
+
+// The palette button under p, or -1.
+- (int)paletteButtonAt:(CGPoint)p
+{
+  CGFloat w;
+  const CGRect pic = [self pictureRect:&w];
+  const CGFloat k = MAX(25, MIN(200, PSOSettings.hudScale)) / 100.0;
+  const CGFloat unitX = pic.size.width / (640.0 * w);  // view points per game pixel
+  const CGFloat unitY = pic.size.height / 480.0;
+  int best = -1;
+  CGFloat best_d = CGFLOAT_MAX;
+  for (const PaletteSlot& slot : kPaletteSlots)
+  {
+    const CGFloat gx = 640 + k * (slot.x - 640) + (w - 1) * 320;
+    const CGFloat gy = 480 + k * (slot.y - 480);
+    const CGFloat vx = CGRectGetMinX(pic) + (gx - 320 * (1 - w)) * unitX;
+    const CGFloat vy = CGRectGetMinY(pic) + gy * unitY;
+    const CGFloat d = std::hypot((p.x - vx) / unitX, (p.y - vy) / unitY) / k;  // in game pixels at size 100%
+    if (d <= kPaletteSlotRadius * 1.1 && d < best_d)
+    {
+      best = slot.input;
+      best_d = d;
+    }
+  }
+  return best;
+}
+
+- (void)releasePalette
+{
+  for (UITouch* touch in _paletteTouch.keyEnumerator.allObjects)
+    PSOClearInput((PSOInput)[_paletteTouch objectForKey:touch].intValue);
+  [_paletteTouch removeAllObjects];
+}
+
+// ---- Camera ----------------------------------------------------------------------
+
+- (void)updateCamera:(UITouch*)touch
+{
+  // Full turn speed once the finger is about two stick radii from where it went down.
+  const CGFloat dx = ([touch locationInView:self].x - _cameraStart.x) / ([self unit] * 2.0);
+  PSOSetInput(PSOInputCStickX, MAX(-1.0, MIN(1.0, dx)));
+}
+
+- (void)releaseCamera
+{
+  _cameraTouch = nil;
+  PSOClearInput(PSOInputCStickX);
+}
+
 - (void)releaseAll
 {
+  [self releaseCamera];
+  [self releasePalette];
   for (UITouch* touch in _touchControl.keyEnumerator.allObjects)
   {
     NSNumber* index = [_touchControl objectForKey:touch];
@@ -466,11 +591,36 @@ struct Control
   }
   for (UITouch* touch in touches)
   {
-    const int index = [self controlAt:[touch locationInView:self]];
+    const CGPoint p = [touch locationInView:self];
+    const int index = [self controlAt:p];
     if (index < 0)
+    {
+      const int button = _tapPalette ? [self paletteButtonAt:p] : -1;
+      if (button >= 0)
+      {
+        [_paletteTouch setObject:@(button) forKey:touch];
+        PSOSetInput((PSOInput)button, 1);
+      }
+      else if (_cameraSwipe && !_cameraTouch && p.x >= CGRectGetMidX(self.bounds))
+      {
+        _cameraTouch = touch;
+        _cameraStart = p;
+      }
       continue;
-    [_touchControl setObject:@(index) forKey:touch];
+    }
     Control& c = _controls[index];
+    if (c.kind == Kind::Stick)
+    {
+      if (_stickHeld)
+        continue;  // one thumb on the stick at a time
+      _stickHeld = YES;
+      if (_stickMode == PSOStickFloating)
+      {
+        c.center = [touch locationInView:self];
+        [self drawControl:c];
+      }
+    }
+    [_touchControl setObject:@(index) forKey:touch];
     [self setPressed:c pressed:YES];
     switch (c.kind)
     {
@@ -485,6 +635,11 @@ struct Control
 {
   for (UITouch* touch in touches)
   {
+    if (touch == _cameraTouch)
+    {
+      [self updateCamera:touch];
+      continue;
+    }
     NSNumber* index = [_touchControl objectForKey:touch];
     if (!index)
       continue;
@@ -506,6 +661,13 @@ struct Control
 {
   for (UITouch* touch in touches)
   {
+    if (touch == _cameraTouch)
+      [self releaseCamera];
+    if (NSNumber* button = [_paletteTouch objectForKey:touch])
+    {
+      [_paletteTouch removeObjectForKey:touch];
+      PSOClearInput((PSOInput)button.intValue);
+    }
     NSNumber* index = [_touchControl objectForKey:touch];
     if (!index)
       continue;

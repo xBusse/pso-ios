@@ -94,6 +94,33 @@ static CGSize s_screen = CGSizeMake(16, 9);
   Set(@"touchVisibility", @(v));
 }
 
++ (PSOStickMode)stickMode
+{
+  return (PSOStickMode)MAX(0, MIN(2, IntegerOr(@"stickMode", PSOStickAlways)));
+}
++ (void)setStickMode:(PSOStickMode)v
+{
+  Set(@"stickMode", @(v));
+}
+
++ (BOOL)tapPalette
+{
+  return IntegerOr(@"tapPalette", YES) != 0;
+}
++ (void)setTapPalette:(BOOL)v
+{
+  Set(@"tapPalette", @(v));
+}
+
++ (BOOL)cameraSwipe
+{
+  return IntegerOr(@"cameraSwipe", YES) != 0;
+}
++ (void)setCameraSwipe:(BOOL)v
+{
+  Set(@"cameraSwipe", @(v));
+}
+
 + (CGFloat)touchOpacity
 {
   id v = [Defaults() objectForKey:@"touchOpacity"];

@@ -208,6 +208,39 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                  adjust:^(NSInteger d) {
                    PSOSettings.touchVisibility = (PSOTouchVisibility)((PSOSettings.touchVisibility + d + 3) % 3);
                  }],
+    [PSOMenuItem choice:@"STICK"
+                   help:@"While touching: the stick is only drawn while your thumb is on it. Floating: it appears "
+                        @"wherever your thumb lands on the left half of the screen."
+                  value:^{
+                    switch (PSOSettings.stickMode)
+                    {
+                    case PSOStickAlways: return @"Always shown";
+                    case PSOStickWhileTouched: return @"While touching";
+                    case PSOStickFloating: return @"Floating";
+                    }
+                    return @"";
+                  }
+                 adjust:^(NSInteger d) {
+                   PSOSettings.stickMode = (PSOStickMode)((PSOSettings.stickMode + d + 3) % 3);
+                 }],
+    [PSOMenuItem choice:@"TAP ACTION PALETTE"
+                   help:@"Tap the game's own action palette (bottom right) to use an action, as if you "
+                        @"pressed its button."
+                  value:^{
+                    return OnOff(PSOSettings.tapPalette, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.tapPalette = !PSOSettings.tapPalette;
+                 }],
+    [PSOMenuItem choice:@"CAMERA SWIPE"
+                   help:@"Drag sideways on an empty part of the right half of the screen to turn the camera. "
+                        @"A controller's right stick does the same."
+                  value:^{
+                    return OnOff(PSOSettings.cameraSwipe, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.cameraSwipe = !PSOSettings.cameraSwipe;
+                 }],
     [PSOMenuItem choice:@"TOUCH OPACITY"
                    help:@"How visible the on-screen pad is. Single buttons can be changed in the layout editor."
                   value:^{

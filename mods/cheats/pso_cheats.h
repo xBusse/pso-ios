@@ -27,6 +27,10 @@ void pso_cheats_set_exp_multiplier(int multiplier);
 // Multiplies the chance of rare drops from enemies and boxes (1 = off).
 void pso_cheats_set_rare_multiplier(int multiplier);
 
+// How fast the C-stick (right stick) turns the camera, in percent of the
+// default; 0 turns it off. On by default.
+void pso_cheats_set_camera_speed(int percent);
+
 #ifdef __cplusplus
 }
 #endif

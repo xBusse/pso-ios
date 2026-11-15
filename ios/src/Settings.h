@@ -14,6 +14,12 @@ typedef NS_ENUM(NSInteger, PSOTouchVisibility) {
   PSOTouchVisibilityNever,
 };
 
+typedef NS_ENUM(NSInteger, PSOStickMode) {
+  PSOStickAlways = 0,    // drawn all the time
+  PSOStickWhileTouched,  // in its place, drawn only while held
+  PSOStickFloating,      // appears where the thumb lands on the left half
+};
+
 @interface PSOSettings : NSObject
 @property(class, nonatomic) PSODisplayMode displayMode;
 @property(class, nonatomic) NSInteger resolutionScale;  // 1..4 (x native)
@@ -23,6 +29,9 @@ typedef NS_ENUM(NSInteger, PSOTouchVisibility) {
 @property(class, nonatomic) BOOL playWhenSilent;        // ignore the ring/silent switch
 @property(class, nonatomic) PSOTouchVisibility touchVisibility;
 @property(class, nonatomic) CGFloat touchOpacity;       // 0.1..1, all controls
+@property(class, nonatomic) PSOStickMode stickMode;
+@property(class, nonatomic) BOOL tapPalette;    // tapping the game's action palette presses its button
+@property(class, nonatomic) BOOL cameraSwipe;   // dragging on empty space (right half) turns the camera
 
 // Mods (cheats).
 @property(class, nonatomic) BOOL infiniteMeseta;

@@ -1,5 +1,6 @@
 // Cheats for PSO (GPOE8P v1.02), as a ModernGekko mod: infinite meseta,
-// infinite HP/TP, a mag that can always be fed, and EXP / rare drop boosts.
+// infinite HP/TP, a mag that can always be fed, EXP / rare drop boosts, and a
+// camera turned with the C-stick.
 //
 // Hooks can't change registers (the loader restores them afterwards), so each
 // cheat edits guest memory around a game function instead. The hooked
@@ -11,6 +12,7 @@
 #include "moderngekko/mod_abi.h"
 #include "pso_cheats.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,10 +22,16 @@
 #define ADDR_receive_direct_attack 0x8001311Cu
 #define ADDR_receive_weapon_special_attack 0x80011824u
 #define ADDR_TObjPlayer_add_actor_exp 0x801B0F34u   // (this, amount); clamps to the level limit
+#define ADDR_create_font_small_task 0x800FD204u     // floating text, e.g. the EXP number on a kill
+#define LR_award_exp_add 0x800F6D98u                // award_enemy_experience's call to add_actor_exp
+#define LR_award_exp_popup 0x800F6DC4u              // ... and to create_font_small_task
 #define ADDR_is_mag_full 0x8027C0F4u                // (mag): greys out "feed" in the item menu
 #define ADDR_select_enemy_drop 0x8010663Cu          // enemy drop roll (rare first)
 #define ADDR_select_box_item 0x80106818u            // box drop roll (rare first)
 #define ADDR_rare_item_table_file 0x805D5464u       // -> {enemy entries*, box count, box types*, box entries*}
+#define ADDR_camera_controller_registry 0x80488A58u // TCameraCtrl*[], indexed by the view state
+#define ADDR_camera_view_state 0x804FF628u          // u8; 0 = the normal single view
+#define ADDR_controller_input_state 0x8050E208u     // pads from +0x20
 
 #define OFS_stats 0x2B0u          // TObjChara: -> character stats block
 #define OFS_stats_exp 0x1Cu
@@ -34,6 +42,14 @@
 #define OFS_tp 0x32Eu
 #define OFS_mag_fullness_frames 0x190u // TItemMag: f32, frames until hungry
 #define OFS_mag_feeds_while_full 0x194u // f32; the mag is "full" from a threshold up
+
+#define OFS_cam_mode 0x24u        // TCameraCtrl: 1 = following the player
+#define OFS_cam_heading 0x30u     // s32 holding a u16 angle (0x10000 = 360 degrees)
+#define OFS_pad0_cx 0x20u + 0x18u // s16 C-stick x
+
+#define OFS_font_width 0x30u      // TFontSmallTask: f32 text width
+#define OFS_font_text 0x34u       // char[0x10]
+#define FONT_TEXT_LEN 0x10u
 
 #define MAX_MESETA 999999u
 #define HP_DURING_HIT 30000u       // above any hit, so a hit can't kill
@@ -51,6 +67,7 @@ static int is_ram(uint32_t a) { return a >= 0x80000000u && a < 0x81800000u; }
 
 static volatile int g_meseta, g_hp_tp, g_mag;
 static volatile int g_exp_mult = 1, g_rare_mult = 1;
+static volatile int g_camera_speed = 100; // percent; 0 = the C-stick doesn't turn the camera
 
 static int clamp_mult(int m) { return m < 1 ? 1 : m > 64 ? 64 : m; }
 void pso_cheats_set_infinite_meseta(int on) { g_meseta = on != 0; }
@@ -58,6 +75,7 @@ void pso_cheats_set_infinite_hp_tp(int on) { g_hp_tp = on != 0; }
 void pso_cheats_set_mag_always_hungry(int on) { g_mag = on != 0; }
 void pso_cheats_set_exp_multiplier(int m) { g_exp_mult = clamp_mult(m); }
 void pso_cheats_set_rare_multiplier(int m) { g_rare_mult = clamp_mult(m); }
+void pso_cheats_set_camera_speed(int percent) { g_camera_speed = percent < 0 ? 0 : percent > 400 ? 400 : percent; }
 
 static uint32_t local_player(CPUState* s) { return read_u32(s, ADDR_player_slot_table); }
 
@@ -165,6 +183,37 @@ static void drop_roll_return(CPUState* s)
         rare_restore(s);
 }
 
+// --- Camera ------------------------------------------------------------------
+//
+// PSO GC only turns the camera with L (back behind the player). The follow
+// camera keeps its heading until then, so the C-stick turns it by editing
+// that heading each frame.
+
+#define CSTICK_DEADZONE 20
+#define CSTICK_MAX 110
+#define CAMERA_DEG_PER_FRAME 3.0f
+
+static void turn_camera(CPUState* s)
+{
+    const int speed = g_camera_speed;
+    if (speed <= 0 || read_u8(s, ADDR_camera_view_state) != 0u)
+        return;
+    int cx = (int16_t)read_u16(s, ADDR_controller_input_state + OFS_pad0_cx);
+    const int sign = cx < 0 ? -1 : 1;
+    cx = cx * sign - CSTICK_DEADZONE;
+    if (cx <= 0)
+        return;
+    if (cx > CSTICK_MAX - CSTICK_DEADZONE)
+        cx = CSTICK_MAX - CSTICK_DEADZONE;
+    const uint32_t cam = read_u32(s, ADDR_camera_controller_registry);
+    if (!is_ram(cam) || read_u32(s, cam + OFS_cam_mode) != 1u)
+        return;
+    const float deg = CAMERA_DEG_PER_FRAME * (float)speed / 100.0f * (float)cx / (float)(CSTICK_MAX - CSTICK_DEADZONE);
+    const int32_t delta = -(int32_t)(deg * 182.04445f) * sign; // stick right pans the view right
+    const uint32_t heading = read_u32(s, cam + OFS_cam_heading);
+    write_u32(s, cam + OFS_cam_heading, (uint32_t)(uint16_t)(heading + (uint32_t)delta));
+}
+
 // --- Per frame ---------------------------------------------------------------
 
 static void player_run_task(CPUState* s)
@@ -176,6 +225,7 @@ static void player_run_task(CPUState* s)
     const uint32_t p = s->gpr[3];
     if (!is_local_player(s, p))
         return;
+    turn_camera(s);
     if (g_hp_tp)
         refill(s, p);
     if (g_meseta) {
@@ -218,12 +268,15 @@ static void hit_return(CPUState* s)
 
 static uint32_t g_exp_stats, g_exp_before, g_exp_boosted;
 static uint32_t g_exp_sp, g_exp_lr;
+static int g_popup_mult;      // an enemy kill's EXP was boosted; its popup is next
+static int g_popup_call;      // create_font_small_task is making that popup
 
 static void exp_entry(CPUState* s)
 {
     if (g_exp_stats != 0u && g_exp_sp == s->gpr[1] && g_exp_lr == s->lr)
         return; // the same call again
     g_exp_stats = 0u;
+    g_popup_mult = 0;
     const int mult = g_exp_mult;
     const int32_t amount = (int32_t)s->gpr[4];
     if (mult <= 1 || amount <= 0 || !is_local_player(s, s->gpr[3]))
@@ -241,15 +294,68 @@ static void exp_entry(CPUState* s)
     g_exp_before = before;
     g_exp_boosted = (uint32_t)boosted;
     write_u32(s, st + OFS_stats_exp, g_exp_boosted);
+    if (s->lr == LR_award_exp_add)
+        g_popup_mult = mult;
 }
 
 static void exp_return(CPUState* s)
 {
     if (g_exp_stats == 0u)
         return;
-    if (read_u32(s, g_exp_stats + OFS_stats_exp) == g_exp_boosted)
+    if (read_u32(s, g_exp_stats + OFS_stats_exp) == g_exp_boosted) {
         write_u32(s, g_exp_stats + OFS_stats_exp, g_exp_before);
+        g_popup_mult = 0; // no EXP was given, so nothing to show
+    }
     g_exp_stats = 0u;
+}
+
+// The "+EXP" popup gets the game's own amount, so its text is rewritten with
+// the boosted one once the popup exists.
+
+static void popup_entry(CPUState* s)
+{
+    g_popup_call = g_popup_mult > 1 && s->lr == LR_award_exp_popup;
+}
+
+static void popup_return(CPUState* s)
+{
+    if (!g_popup_call)
+        return;
+    g_popup_call = 0;
+    const int mult = g_popup_mult;
+    g_popup_mult = 0;
+    const uint32_t task = s->gpr[3];
+    if (!is_ram(task))
+        return;
+    char text[FONT_TEXT_LEN + 1];
+    uint32_t len = 0;
+    while (len < FONT_TEXT_LEN && (text[len] = (char)read_u8(s, task + OFS_font_text + len)) != 0)
+        ++len;
+    text[len] = 0;
+    uint32_t digits = len;
+    while (digits > 0 && text[digits - 1] >= '0' && text[digits - 1] <= '9')
+        --digits;
+    if (digits == len)
+        return;
+    uint64_t amount = (uint64_t)strtoul(text + digits, NULL, 10) * (uint64_t)mult;
+    if (amount > 99999999u)
+        amount = 99999999u;
+    char number[12];
+    const int n = snprintf(number, sizeof number, "%u", (unsigned)amount);
+    if (n <= 0 || digits + (uint32_t)n >= FONT_TEXT_LEN)
+        return;
+    for (int i = 0; i <= n; ++i)
+        write_u8(s, task + OFS_font_text + digits + (uint32_t)i, (uint8_t)number[i]);
+    // Digits are about equally wide; widen the text by the extra ones.
+    union { uint32_t u; float f; } w;
+    w.u = read_u32(s, task + OFS_font_width);
+    if (w.f > 0.0f && len > 0u) {
+        w.f = w.f * (float)(digits + (uint32_t)n) / (float)len;
+        write_u32(s, task + OFS_font_width, w.u);
+    }
+#ifdef PSO_CHEATS_DYLIB
+    fprintf(stderr, "[cheats] popup '%s' -> '%.*s%s'\n", text, (int)digits, text, number);
+#endif
 }
 
 // --- Mag -------------------------------------------------------------------
@@ -273,6 +379,8 @@ static const ModernGekkoModHook hooks[] = {
     RECOMP_HOOK_RETURN(ADDR_receive_weapon_special_attack, hit_return),
     RECOMP_HOOK(ADDR_TObjPlayer_add_actor_exp, exp_entry),
     RECOMP_HOOK_RETURN(ADDR_TObjPlayer_add_actor_exp, exp_return),
+    RECOMP_HOOK(ADDR_create_font_small_task, popup_entry),
+    RECOMP_HOOK_RETURN(ADDR_create_font_small_task, popup_return),
     RECOMP_HOOK(ADDR_is_mag_full, is_mag_full_entry),
     RECOMP_HOOK(ADDR_select_enemy_drop, drop_roll_entry),
     RECOMP_HOOK_RETURN(ADDR_select_enemy_drop, drop_roll_return),
@@ -293,6 +401,9 @@ static void on_load(const ModernGekkoModHostApi* api)
     const char* e = strstr(env, "exp=");
     if (e)
         pso_cheats_set_exp_multiplier(atoi(e + 4));
+    const char* c = strstr(env, "cam=");
+    if (c)
+        pso_cheats_set_camera_speed(atoi(c + 4));
     const char* r = strstr(env, "rare=");
     if (r)
         pso_cheats_set_rare_multiplier(atoi(r + 5));

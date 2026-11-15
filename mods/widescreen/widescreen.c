@@ -41,6 +41,9 @@
 #define ADDR_TWindowMessage_render 0x80269DC8u           // main menu: help box
 #define ADDR_TWindowSubStatusDisp_render 0x802815D0u     // main menu: character panel
 #define ADDR_internet_time_callback 0x802C6FB0u          // main menu: internet time (a TWindowCallBack's callback)
+#define ADDR_fade_render_a 0x800F7E28u            // full-screen fades (area loads, warps):
+#define ADDR_fade_render_b 0x800F88D8u            //   TUnk_80499970 / TUnk_804999E8::render
+#define ADDR_TAdFadeGC_render 0x802C7C44u         // title / menu fades
 #define ADDR_TRaderMapCore_view_mode 0x805D5F3Cu       // 0 corner radar, 1/2 the menu's map views
 
 static float u32_to_f(uint32_t v) { float f; memcpy(&f, &v, 4); return f; }
@@ -241,6 +244,22 @@ static void menu_window_begin(float side, float ax)
 static void menu_help_begin(CPUState* s) { (void)s; menu_window_begin(-1.0f, 0.0f); }
 static void menu_status_begin(CPUState* s) { (void)s; menu_window_begin(1.0f, 640.0f); }
 
+// --- Full-screen fades -------------------------------------------------------
+//
+// Fades to and from black (area loads, warps) are a 640x480 quad, which would
+// only cover the 4:3 middle; it is stretched across the screen.
+
+static void stretch_begin(CPUState* s)
+{
+    (void)s;
+    Xform x = {1.0f, 1.0f, 0.0f, 0.0f};
+    if (g_widen > 1.0001f) {
+        x.kx = g_widen;
+        x.ox = 320.0f * (1.0f - g_widen);
+    }
+    anchor_set(x, x);
+}
+
 // --- Radar -----------------------------------------------------------------
 //
 // The corner radar (view mode 0) is a 128x128 box at 480..608 x 64..192 in the
@@ -355,6 +374,12 @@ static const ModernGekkoModHook hooks[] = {
     RECOMP_HOOK_RETURN(ADDR_TWindowActionPalette_render, anchor_end),
     RECOMP_HOOK(ADDR_TRaderMapCore_render, radar_begin),
     RECOMP_HOOK_RETURN(ADDR_TRaderMapCore_render, anchor_end),
+    RECOMP_HOOK(ADDR_fade_render_a, stretch_begin),
+    RECOMP_HOOK_RETURN(ADDR_fade_render_a, anchor_end),
+    RECOMP_HOOK(ADDR_fade_render_b, stretch_begin),
+    RECOMP_HOOK_RETURN(ADDR_fade_render_b, anchor_end),
+    RECOMP_HOOK(ADDR_TAdFadeGC_render, stretch_begin),
+    RECOMP_HOOK_RETURN(ADDR_TAdFadeGC_render, anchor_end),
     RECOMP_HOOK(ADDR_TWindowMenuMainMenu_render, menu_list_begin),
     RECOMP_HOOK_RETURN(ADDR_TWindowMenuMainMenu_render, anchor_end),
     RECOMP_HOOK(ADDR_TWindowMessage_render, menu_help_begin),

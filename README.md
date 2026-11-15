@@ -51,6 +51,11 @@ Resume / Settings / Edit touch controls / Quit. Settings:
 - **Resolution** 1x–4x (default 2x), **Volume**, **Silent mode** (whether the ring switch mutes the game).
 - **R button**: Hold, or Toggle (press once for the second action palette, again to go back).
 - **Touch controls**: Auto (hidden while a controller is connected), Always, Hidden; overall opacity.
+- **Stick**: always shown, shown only while your thumb is on it, or floating (appears where your thumb lands on
+  the left half).
+- **Tap action palette**: tapping a slot of the game's own action palette presses its button (A, B or X).
+- **Camera swipe**: dragging sideways on empty space in the right half turns the camera, like a controller's right
+  stick (the C-stick, which the cheats mod below makes turn the camera; the game itself only recenters it with L).
 - **Edit touch layout**: drag any control; select one to change its size and opacity.
 - **Mods**: infinite meseta, infinite HP/TP, mag always hungry (feed any time), EXP boost (up to 10x) and rare
   drop boost (up to 32x). They apply to your own character, offline.
@@ -73,13 +78,14 @@ Widescreen is done game-side by a ModernGekko mod, `mods/widescreen/widescreen.c
 the Mac, `make run` builds it into `build/user/Mods` and `PSO_WIDE=1.3333` turns it on for 16:9 with the Stretch
 aspect mode). It widens only the GPU copy of the game's main 3D projection, so the game's 2D keeps its 4:3
 layout and shadow passes are untouched, and moves (and sizes, for HUD size) the status panel, action palette, radar and START menu windows to the
-screen's edges while they draw; the START menu's backdrop is stretched across the screen. Dolphin's widescreen hack isn't used: it also widened the shadows and squeezed the HUD.
+screen's edges while they draw; the START menu's backdrop and the fades to black are stretched across the screen. Dolphin's widescreen hack isn't used: it also widened the shadows and squeezed the HUD.
 
 The Mods settings come from a second mod, `mods/cheats/cheats.c` (on the Mac, `PSO_CHEATS=meseta,hp,mag,exp=4,rare=8`,
 any subset). Like the widescreen mod it only edits game memory around hooked functions: it refills HP/TP and
 meseta each frame, raises HP while a hit is worked out so it can't kill, adds the extra EXP before the game's own
-level-limit clamp, clears the mag's fullness when the item menu checks it, and swaps the rare table's chances for
-higher ones during each drop roll.
+level-limit clamp (and rewrites the "EXP+" popup to match), clears the mag's fullness when the item menu checks it, and swaps the rare table's chances for
+higher ones during each drop roll. It also turns the follow camera with the C-stick (`cam=` sets the speed in
+percent, 0 turns it off), which is on whatever the cheat settings.
 
 ## Status
 
