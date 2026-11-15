@@ -20,6 +20,7 @@
   UISlider* _opacity;
   UISlider* _all;
   UIButton* _reset;
+  UIButton* _remove;
   CGPoint _panelCenter;  // fraction of the view; (0,0) = not moved yet
 }
 
@@ -108,6 +109,7 @@ static UILabel* MakeLabel(CGFloat size, UIColor* color)
   _size = [self slider:0.5 max:2.0 action:@selector(sizeChanged)];
   _opacity = [self slider:0 max:1 action:@selector(opacityChanged)];
   _all = [self slider:0.1 max:1 action:@selector(allChanged)];
+  _remove = [self button:@"Remove" action:@selector(toggleRemoved)];
   _reset = [self button:@"Reset this" action:@selector(resetSelected)];
   [self button:@"Reset all" action:@selector(resetAll)];
   [self button:@"Done" action:@selector(done)];
@@ -176,8 +178,9 @@ static UILabel* MakeLabel(CGFloat size, UIColor* color)
   NSString* name = _controls.selectedName;
   const BOOL has = name != nil;
   _title.text = has ? [NSString stringWithFormat:@"%@ selected — drag to move", name]
-                    : @"Drag a control to move it, or tap one to resize it";
-  _size.enabled = _opacity.enabled = _reset.enabled = has;
+                    : @"Drag a control to move it, or tap one to resize or remove it";
+  _size.enabled = _opacity.enabled = _reset.enabled = _remove.enabled = has;
+  [_remove setTitle:(has && _controls.selectedHidden) ? @"Restore" : @"Remove" forState:UIControlStateNormal];
   _size.alpha = _opacity.alpha = _sizeLabel.alpha = _opacityLabel.alpha = has ? 1 : 0.4;
   _size.value = _controls.selectedScale;
   _opacity.value = _controls.selectedOpacity;
@@ -210,6 +213,11 @@ static UILabel* MakeLabel(CGFloat size, UIColor* color)
   [self updateLabels];
 }
 
+- (void)toggleRemoved
+{
+  _controls.selectedHidden = !_controls.selectedHidden;
+}
+
 - (void)resetSelected
 {
   [_controls resetSelected];
@@ -219,7 +227,7 @@ static UILabel* MakeLabel(CGFloat size, UIColor* color)
 {
   UIAlertController* alert =
       [UIAlertController alertControllerWithTitle:@"Reset all controls?"
-                                          message:@"Every control goes back to its original place, size and opacity."
+                                          message:@"Every control goes back to its original place, size and opacity, and removed ones come back."
                                    preferredStyle:UIAlertControllerStyleAlert];
   [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
   [alert addAction:[UIAlertAction actionWithTitle:@"Reset"

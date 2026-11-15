@@ -32,6 +32,7 @@ static __weak PSOGameViewController* s_current;
   BOOL _menuOpen;
   BOOL _stopped;
   BOOL _quitting;
+  PSOPadButton _padMap[8];  // controller button for each of PSOSettings.mappableInputs
 }
 
 + (PSOGameViewController*)current
@@ -96,6 +97,8 @@ static __weak PSOGameViewController* s_current;
   [center addObserver:self selector:@selector(updateOverlay) name:GCControllerDidConnectNotification object:nil];
   [center addObserver:self selector:@selector(updateOverlay) name:GCControllerDidDisconnectNotification object:nil];
   [center addObserver:self selector:@selector(updateOverlay) name:PSOSettingsDidChangeNotification object:nil];
+  [center addObserver:self selector:@selector(loadPadMap) name:PSOSettingsDidChangeNotification object:nil];
+  [self loadPadMap];
 
   __weak PSOGameViewController* weakSelf = self;
   PSOPad.gameHandler = ^(GCExtendedGamepad* pad) {
@@ -271,6 +274,32 @@ static __weak PSOGameViewController* s_current;
 
 // ---- Controllers -----------------------------------------------------------------
 
+- (void)loadPadMap
+{
+  NSArray<NSNumber*>* inputs = PSOSettings.mappableInputs;
+  for (NSUInteger i = 0; i < inputs.count && i < 8; ++i)
+    _padMap[i] = [PSOSettings controllerButtonFor:(PSOInput)inputs[i].intValue];
+}
+
+static GCControllerButtonInput* PadElement(GCExtendedGamepad* pad, PSOPadButton b)
+{
+  switch (b)
+  {
+  case PSOPadA: return pad.buttonA;
+  case PSOPadB: return pad.buttonB;
+  case PSOPadX: return pad.buttonX;
+  case PSOPadY: return pad.buttonY;
+  case PSOPadLB: return pad.leftShoulder;
+  case PSOPadRB: return pad.rightShoulder;
+  case PSOPadLT: return pad.leftTrigger;
+  case PSOPadRT: return pad.rightTrigger;
+  case PSOPadL3: return pad.leftThumbstickButton;
+  case PSOPadR3: return pad.rightThumbstickButton;
+  case PSOPadMenu: return pad.buttonMenu;
+  default: return nil;
+  }
+}
+
 - (void)padChanged:(GCExtendedGamepad*)pad
 {
   if (!_started || _stopped || _menuOpen)
@@ -283,15 +312,16 @@ static __weak PSOGameViewController* s_current;
   PSOSetInput(PSOInputDpadDown, pad.dpad.down.isPressed);
   PSOSetInput(PSOInputDpadLeft, pad.dpad.left.isPressed);
   PSOSetInput(PSOInputDpadRight, pad.dpad.right.isPressed);
-  // Same physical layout as a GameCube pad: A bottom, B left, X right, Y top.
-  PSOSetInput(PSOInputA, pad.buttonA.isPressed);
-  PSOSetInput(PSOInputB, pad.buttonX.isPressed);
-  PSOSetInput(PSOInputX, pad.buttonB.isPressed);
-  PSOSetInput(PSOInputY, pad.buttonY.isPressed);
-  PSOSetInput(PSOInputL, pad.leftTrigger.value);
-  PSOSetInput(PSOInputR, pad.rightTrigger.value);
-  PSOSetInput(PSOInputZ, pad.rightShoulder.isPressed);
-  PSOSetInput(PSOInputStart, pad.buttonMenu.isPressed);
+  // Buttons as mapped in Settings > Controller. L and R keep a trigger's
+  // analog travel; the rest are on/off.
+  NSArray<NSNumber*>* inputs = PSOSettings.mappableInputs;
+  for (NSUInteger i = 0; i < inputs.count && i < 8; ++i)
+  {
+    const PSOInput input = (PSOInput)inputs[i].intValue;
+    GCControllerButtonInput* e = PadElement(pad, _padMap[i]);
+    const bool analog = input == PSOInputL || input == PSOInputR;
+    PSOSetInput(input, !e ? 0 : analog ? e.value : (e.isPressed ? 1 : 0));
+  }
 }
 
 @end

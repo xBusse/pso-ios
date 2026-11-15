@@ -53,10 +53,15 @@ Resume / Settings / Edit touch controls / Quit. Settings:
 - **Touch controls**: Auto (hidden while a controller is connected), Always, Hidden; overall opacity.
 - **Stick**: always shown, shown only while your thumb is on it, or floating (appears where your thumb lands on
   the left half).
-- **Tap action palette**: tapping a slot of the game's own action palette presses its button (A, B or X).
+- **Tap action palette**: tapping a slot of the game's own action palette presses its button (A, B or X), the
+  chat icon above them presses Y and the R mark presses R.
 - **Camera swipe**: dragging sideways on empty space in the right half turns the camera, like a controller's right
   stick (the C-stick, which the cheats mod below makes turn the camera; the game itself only recenters it with L).
-- **Edit touch layout**: drag any control; select one to change its size and opacity.
+  **Camera speed** 50–400%.
+- **Edit touch layout**: drag any control; select one to change its size and opacity, or remove it (removed
+  controls show as a dashed outline in the editor, where they can be restored).
+- **Controller**: choose which button on a Bluetooth controller presses each GameCube button (A, B, X, Y, Z, L, R,
+  Start). Options/Home always open the pause menu.
 - **Mods**: infinite meseta, infinite HP/TP, mag always hungry (feed any time), EXP boost (up to 10x) and rare
   drop boost (up to 32x). They apply to your own character, offline.
 

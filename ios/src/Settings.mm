@@ -103,6 +103,103 @@ static CGSize s_screen = CGSizeMake(16, 9);
   Set(@"stickMode", @(v));
 }
 
+// ---- Controller mapping ----
+
++ (NSArray<NSNumber*>*)mappableInputs
+{
+  return @[ @(PSOInputA), @(PSOInputB), @(PSOInputX), @(PSOInputY), @(PSOInputZ), @(PSOInputL), @(PSOInputR),
+            @(PSOInputStart) ];
+}
+
++ (NSString*)inputName:(PSOInput)input
+{
+  switch (input)
+  {
+  case PSOInputA: return @"A";
+  case PSOInputB: return @"B";
+  case PSOInputX: return @"X";
+  case PSOInputY: return @"Y";
+  case PSOInputZ: return @"Z";
+  case PSOInputL: return @"L";
+  case PSOInputR: return @"R";
+  case PSOInputStart: return @"START";
+  default: return @"";
+  }
+}
+
++ (NSString*)padButtonName:(PSOPadButton)button
+{
+  switch (button)
+  {
+  case PSOPadNone: return @"None";
+  case PSOPadA: return @"A / Cross (bottom)";
+  case PSOPadB: return @"B / Circle (right)";
+  case PSOPadX: return @"X / Square (left)";
+  case PSOPadY: return @"Y / Triangle (top)";
+  case PSOPadLB: return @"LB / L1";
+  case PSOPadRB: return @"RB / R1";
+  case PSOPadLT: return @"LT / L2";
+  case PSOPadRT: return @"RT / R2";
+  case PSOPadL3: return @"Left stick click";
+  case PSOPadR3: return @"Right stick click";
+  case PSOPadMenu: return @"Menu / Start";
+  default: return @"";
+  }
+}
+
+static PSOPadButton DefaultPadButton(PSOInput input)
+{
+  // Same physical layout as a GameCube pad: A bottom, B left, X right, Y top.
+  switch (input)
+  {
+  case PSOInputA: return PSOPadA;
+  case PSOInputB: return PSOPadX;
+  case PSOInputX: return PSOPadB;
+  case PSOInputY: return PSOPadY;
+  case PSOInputZ: return PSOPadRB;
+  case PSOInputL: return PSOPadLT;
+  case PSOInputR: return PSOPadRT;
+  case PSOInputStart: return PSOPadMenu;
+  default: return PSOPadNone;
+  }
+}
+
++ (PSOPadButton)controllerButtonFor:(PSOInput)input
+{
+  NSDictionary* map = [Defaults() dictionaryForKey:@"controllerMap"];
+  id v = map[[self inputName:input]];
+  if (![v isKindOfClass:NSNumber.class])
+    return DefaultPadButton(input);
+  return (PSOPadButton)MAX(0, MIN(PSOPadButtonCount - 1, [v integerValue]));
+}
+
++ (void)setControllerButton:(PSOPadButton)button forInput:(PSOInput)input
+{
+  NSMutableDictionary* map = [[Defaults() dictionaryForKey:@"controllerMap"] mutableCopy] ?: [NSMutableDictionary dictionary];
+  map[[self inputName:input]] = @(button);
+  Set(@"controllerMap", map);
+}
+
++ (void)resetControllerMap
+{
+  Set(@"controllerMap", @{});
+}
+
++ (NSArray<NSNumber*>*)cameraSpeeds
+{
+  return @[ @50, @75, @100, @150, @200, @250, @300, @400 ];
+}
++ (NSInteger)cameraSpeed
+{
+  const NSInteger v = IntegerOr(@"cameraSpeed", 150);
+  return [self.cameraSpeeds containsObject:@(v)] ? v : 150;
+}
++ (void)setCameraSpeed:(NSInteger)v
+{
+  Set(@"cameraSpeed", @(v));
+  PSOSetCameraSpeed((int)v);
+}
+
 + (BOOL)tapPalette
 {
   return IntegerOr(@"tapPalette", YES) != 0;
@@ -237,6 +334,7 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
   PSOSetVolume((int)self.volume);
   PSOSetHUDScale((int)self.hudScale);
   PSOSetRToggle(self.rToggle);
+  PSOSetCameraSpeed((int)self.cameraSpeed);
   ApplyCheats();
 }
 

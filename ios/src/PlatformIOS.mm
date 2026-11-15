@@ -402,6 +402,11 @@ void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hun
   pso_cheats_set_rare_multiplier(rare_multiplier);
 }
 
+void PSOSetCameraSpeed(int percent)
+{
+  pso_cheats_set_camera_speed(percent);
+}
+
 void PSOSetVolume(int percent)
 {
   {

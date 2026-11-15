@@ -14,6 +14,7 @@
 @property(nonatomic, readonly) NSString* selectedName;  // nil: nothing selected
 @property(nonatomic) CGFloat selectedScale;             // 0.5..2
 @property(nonatomic) CGFloat selectedOpacity;           // 0..1, relative to the global opacity
+@property(nonatomic) BOOL selectedHidden;               // removed from the pad (shown faintly while editing)
 - (void)resetSelected;
 - (void)resetAll;
 

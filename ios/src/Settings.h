@@ -20,6 +20,24 @@ typedef NS_ENUM(NSInteger, PSOStickMode) {
   PSOStickFloating,      // appears where the thumb lands on the left half
 };
 
+// Controller buttons the GameCube buttons can be mapped to. Options/Home stay
+// reserved for the pause menu.
+typedef NS_ENUM(NSInteger, PSOPadButton) {
+  PSOPadNone = 0,
+  PSOPadA,  // bottom face button
+  PSOPadB,  // right
+  PSOPadX,  // left
+  PSOPadY,  // top
+  PSOPadLB,
+  PSOPadRB,
+  PSOPadLT,
+  PSOPadRT,
+  PSOPadL3,
+  PSOPadR3,
+  PSOPadMenu,
+  PSOPadButtonCount,
+};
+
 @interface PSOSettings : NSObject
 @property(class, nonatomic) PSODisplayMode displayMode;
 @property(class, nonatomic) NSInteger resolutionScale;  // 1..4 (x native)
@@ -31,7 +49,9 @@ typedef NS_ENUM(NSInteger, PSOStickMode) {
 @property(class, nonatomic) CGFloat touchOpacity;       // 0.1..1, all controls
 @property(class, nonatomic) PSOStickMode stickMode;
 @property(class, nonatomic) BOOL tapPalette;    // tapping the game's action palette presses its button
-@property(class, nonatomic) BOOL cameraSwipe;   // dragging on empty space (right half) turns the camera
+@property(class, nonatomic) BOOL cameraSwipe;
+@property(class, nonatomic) NSInteger cameraSpeed;  // percent, one of cameraSpeeds
++ (NSArray<NSNumber*>*)cameraSpeeds;   // dragging on empty space (right half) turns the camera
 
 // Mods (cheats).
 @property(class, nonatomic) BOOL infiniteMeseta;
@@ -48,6 +68,15 @@ typedef NS_ENUM(NSInteger, PSOStickMode) {
 + (void)setTouchLayout:(NSDictionary<NSString*, NSDictionary<NSString*, NSNumber*>*>*)layout;
 
 + (NSString*)displayModeName:(PSODisplayMode)mode;
+
+// Controller mapping: which controller button drives each GameCube button
+// (A, B, X, Y, Z, L, R, Start; see mappableInputs). Sticks and D-pad are fixed.
++ (NSArray<NSNumber*>*)mappableInputs;
++ (NSString*)inputName:(PSOInput)input;
++ (NSString*)padButtonName:(PSOPadButton)button;
++ (PSOPadButton)controllerButtonFor:(PSOInput)input;
++ (void)setControllerButton:(PSOPadButton)button forInput:(PSOInput)input;
++ (void)resetControllerMap;
 
 // Pushes everything to the game side (safe before and during play).
 + (void)applyToGameWithScreenSize:(CGSize)size;

@@ -24,24 +24,27 @@ struct Control
   CGPoint center;
   CGFloat radius;
   CGFloat alpha = 1;  // per-control opacity (times the global one)
+  bool hidden = false;  // removed in the layout editor
   CAShapeLayer* base = nil;
   CAShapeLayer* knob = nil;  // Stick only
   CATextLayer* text = nil;
 };
 // The game's action palette (bottom right): its three slots, in the game's
 // 640x480 layout at HUD size 100%, measured from the game. The border colors
-// match the GameCube buttons: green A, red B, grey X.
+// match the GameCube buttons: green A, red B, grey X. Above them sits the chat
+// icon (Y) and below them the R mark (switches the palette).
 struct PaletteSlot
 {
   PSOInput input;
-  CGFloat x, y;
+  CGFloat x, y, radius;
 };
 constexpr PaletteSlot kPaletteSlots[] = {
-    {PSOInputA, 546, 391},
-    {PSOInputB, 501, 417},
-    {PSOInputX, 591, 368},
+    {PSOInputA, 546, 391, 27},
+    {PSOInputB, 501, 417, 27},
+    {PSOInputX, 591, 368, 27},
+    {PSOInputY, 517, 370, 22},
+    {PSOInputR, 575, 426, 18},
 };
-constexpr CGFloat kPaletteSlotRadius = 27;
 }  // namespace
 
 @implementation PSOTouchControls
@@ -186,6 +189,7 @@ constexpr CGFloat kPaletteSlotRadius = 27;
     break;
   }
   c.alpha = 1;
+  c.hidden = false;
 }
 
 - (void)placeControl:(Control&)c
@@ -204,6 +208,7 @@ constexpr CGFloat kPaletteSlotRadius = 27;
     c.radius *= MAX(0.5, MIN(2.0, [o[@"scale"] doubleValue]));
   if (o[@"opacity"])
     c.alpha = MAX(0.0, MIN(1.0, [o[@"opacity"] doubleValue]));
+  c.hidden = [o[@"hidden"] boolValue];
 }
 
 - (void)layoutSubviews
@@ -250,7 +255,9 @@ constexpr CGFloat kPaletteSlotRadius = 27;
   const BOOL latched = _rLatched && c.kind == Kind::Button && c.input == PSOInputR;
   CGFloat idle = _opacity * c.alpha;
   if (self.editing)
-    idle = MAX(idle, 0.25);  // never invisible while editing
+    idle = c.hidden ? 0.15 : MAX(idle, 0.25);  // never invisible while editing
+  else if (c.hidden)
+    idle = 0;
   else if (c.kind == Kind::Stick && _stickMode != PSOStickAlways && !_stickHeld)
     idle = 0;  // only drawn while held
   const CGFloat lit = MIN(1.0, MAX(idle * 2.0, idle + 0.3));
@@ -265,6 +272,7 @@ constexpr CGFloat kPaletteSlotRadius = 27;
   c.base.fillColor = latched ? [gold colorWithAlphaComponent:0.45].CGColor
                              : [UIColor colorWithWhite:1 alpha:0.25].CGColor;
   c.base.lineWidth = selected ? 3 : 2;
+  c.base.lineDashPattern = c.hidden ? @[ @6, @5 ] : nil;
   [CATransaction commit];
 }
 
@@ -275,6 +283,8 @@ constexpr CGFloat kPaletteSlotRadius = 27;
   for (size_t i = 0; i < _controls.size(); ++i)
   {
     const Control& c = _controls[i];
+    if (c.hidden && !self.editing)
+      continue;
     // Generous hit areas: sticks grab anything nearby.
     const CGFloat reach = self.editing ? MAX(c.radius, 22) : c.radius * (c.kind == Kind::Button ? 1.25 : 1.6);
     const CGFloat d = std::hypot(p.x - c.center.x, p.y - c.center.y);
@@ -292,7 +302,7 @@ constexpr CGFloat kPaletteSlotRadius = 27;
                              _controls[best].radius * 1.25;
     if (!onOther)
       for (size_t i = 0; i < _controls.size(); ++i)
-        if (_controls[i].kind == Kind::Stick)
+        if (_controls[i].kind == Kind::Stick && !_controls[i].hidden)
           return static_cast<int>(i);
   }
   return best;
@@ -410,8 +420,9 @@ constexpr CGFloat kPaletteSlotRadius = 27;
     const CGFloat gy = 480 + k * (slot.y - 480);
     const CGFloat vx = CGRectGetMinX(pic) + (gx - 320 * (1 - w)) * unitX;
     const CGFloat vy = CGRectGetMinY(pic) + gy * unitY;
-    const CGFloat d = std::hypot((p.x - vx) / unitX, (p.y - vy) / unitY) / k;  // in game pixels at size 100%
-    if (d <= kPaletteSlotRadius * 1.1 && d < best_d)
+    // Distance in slot radii, so the nearest slot wins where the touch areas overlap.
+    const CGFloat d = std::hypot((p.x - vx) / unitX, (p.y - vy) / unitY) / k / slot.radius;
+    if (d <= 1.15 && d < best_d)
     {
       best = slot.input;
       best_d = d;
@@ -431,8 +442,8 @@ constexpr CGFloat kPaletteSlotRadius = 27;
 
 - (void)updateCamera:(UITouch*)touch
 {
-  // Full turn speed once the finger is about two stick radii from where it went down.
-  const CGFloat dx = ([touch locationInView:self].x - _cameraStart.x) / ([self unit] * 2.0);
+  // Full turn speed once the finger is 1.5 units from where it went down.
+  const CGFloat dx = ([touch locationInView:self].x - _cameraStart.x) / ([self unit] * 1.5);
   PSOSetInput(PSOInputCStickX, MAX(-1.0, MIN(1.0, dx)));
 }
 
@@ -530,6 +541,23 @@ constexpr CGFloat kPaletteSlotRadius = 27;
   [self saveSelected:^(NSMutableDictionary* o) {
     o[@"opacity"] = @(MAX(0.0, MIN(1.0, opacity)));
   }];
+}
+
+- (BOOL)selectedHidden
+{
+  return _selected >= 0 && _controls[_selected].hidden;
+}
+
+- (void)setSelectedHidden:(BOOL)hidden
+{
+  [self saveSelected:^(NSMutableDictionary* o) {
+    if (hidden)
+      o[@"hidden"] = @YES;
+    else
+      [o removeObjectForKey:@"hidden"];
+  }];
+  if (self.selectionChanged)
+    self.selectionChanged();
 }
 
 - (void)resetSelected

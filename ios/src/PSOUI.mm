@@ -506,13 +506,22 @@ static BOOL s_prevA, s_prevB, s_prevMenu;
 {
   [super layoutSubviews];
   const CGFloat rh = self.rowHeight;
+  // The value column clears the longest title that has a value.
+  CGFloat column = self.valueColumn;
+  if (column > 0)
+  {
+    UIFont* font = PSOFont(self.fontSize);
+    for (PSOMenuItem* item in self.items)
+      if (item.value)
+        column = MAX(column, [item.title sizeWithAttributes:@{NSFontAttributeName : font}].width + self.fontSize * 0.5);
+  }
   for (NSUInteger i = 0; i < _rows.count; ++i)
   {
     PSOMenuRow* row = _rows[i];
     row.frame = CGRectMake(0, i * rh, self.bounds.size.width, rh);
     row.fontSize = self.fontSize;
     row.leftInset = self.leftInset;
-    row.valueColumn = self.valueColumn;
+    row.valueColumn = column;
     row.hot = (NSInteger)i == _selectedIndex;
     [row render];
   }

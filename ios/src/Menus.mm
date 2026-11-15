@@ -131,6 +131,46 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
   return page;
 }
 
+static PSOPageViewController* MakeControllerPage(BOOL overGame)
+{
+  PSOPageViewController* page = [PSOPageViewController new];
+  page.pageTitle = @"Controller";
+  page.overGame = overGame;
+  page.smallItems = YES;
+  page.valueColumn = 4;
+  __weak PSOPageViewController* weakPage = page;
+
+  NSMutableArray<PSOMenuItem*>* items = [NSMutableArray array];
+  for (NSNumber* n in PSOSettings.mappableInputs)
+  {
+    const PSOInput input = (PSOInput)n.intValue;
+    NSString* title = [@"GAMECUBE " stringByAppendingString:[PSOSettings inputName:input]];
+    [items addObject:[PSOMenuItem choice:title
+                                    help:@"Which button on your controller presses this GameCube button. Left/right "
+                                         @"to change. Options/Home always open the pause menu."
+                                   value:^{
+                                     return [PSOSettings padButtonName:[PSOSettings controllerButtonFor:input]];
+                                   }
+                                  adjust:^(NSInteger d) {
+                                    const NSInteger count = PSOPadButtonCount;
+                                    const NSInteger b = ([PSOSettings controllerButtonFor:input] + d + count) % count;
+                                    [PSOSettings setControllerButton:(PSOPadButton)b forInput:input];
+                                  }]];
+  }
+  [items addObject:[PSOMenuItem action:@"RESET TO DEFAULT"
+                                  help:@"The GameCube layout: A bottom, B left, X right, Y top, Z on RB, L/R on the "
+                                       @"triggers."
+                                   run:^{
+                                     [PSOSettings resetControllerMap];
+                                     [weakPage refresh];
+                                   }]];
+  [items addObject:[PSOMenuItem action:@"BACK" help:nil run:^{
+    [weakPage goBack];
+  }]];
+  page.items = items;
+  return page;
+}
+
 PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
 {
   PSOPageViewController* page = [PSOPageViewController new];
@@ -241,6 +281,14 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                  adjust:^(NSInteger) {
                    PSOSettings.cameraSwipe = !PSOSettings.cameraSwipe;
                  }],
+    [PSOMenuItem choice:@"CAMERA SPEED"
+                   help:@"How fast the camera swipe and a controller's right stick turn the camera."
+                  value:^{
+                    return [NSString stringWithFormat:@"%ld%%", (long)PSOSettings.cameraSpeed];
+                  }
+                 adjust:^(NSInteger d) {
+                   PSOSettings.cameraSpeed = Cycle(PSOSettings.cameraSpeeds, PSOSettings.cameraSpeed, d);
+                 }],
     [PSOMenuItem choice:@"TOUCH OPACITY"
                    help:@"How visible the on-screen pad is. Single buttons can be changed in the layout editor."
                   value:^{
@@ -261,6 +309,11 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                       [weakPage presentViewController:editor animated:YES completion:^{
                         weakPage.view.alpha = 0;
                       }];
+                    }],
+    [PSOMenuItem action:@"CONTROLLER"
+                   help:@"Map your Bluetooth controller's buttons to the GameCube buttons."
+                    run:^{
+                      [weakPage showPage:MakeControllerPage(overGame)];
                     }],
     [PSOMenuItem action:@"MODS"
                    help:@"Cheats: infinite meseta, infinite HP/TP, a mag you can always feed, EXP and rare drop "

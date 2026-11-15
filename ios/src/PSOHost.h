@@ -70,6 +70,8 @@ void PSOSetHUDScale(int percent);
 // Cheats (mods/cheats), applied live. Multipliers of 1 are off.
 void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hungry, int exp_multiplier,
                   int rare_multiplier);
+// How fast the C-stick turns the camera, in percent (mods/cheats).
+void PSOSetCameraSpeed(int percent);
 
 // Restarts audio output after an interruption (phone call, Siri, another app).
 void PSORestartAudio(void);
