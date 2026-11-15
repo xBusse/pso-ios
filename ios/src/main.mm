@@ -2,8 +2,10 @@
 
 #import "GameViewController.h"
 
+// iOS 27 requires the scene-based lifecycle: the app delegate only does
+// process-wide setup, and the scene delegate owns the window.
+
 @interface PSOAppDelegate : UIResponder <UIApplicationDelegate>
-@property(nonatomic, strong) UIWindow* window;
 @end
 
 @implementation PSOAppDelegate
@@ -20,11 +22,36 @@
     [@"Copy the \"pso\" game folder (with \"sys\" and \"files\" inside) into this folder,\n"
      @"or use Import in the app.\n" writeToFile:readme atomically:YES encoding:NSUTF8StringEncoding error:nil];
   }
+  return YES;
+}
 
-  self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+- (UISceneConfiguration*)application:(UIApplication*)application
+    configurationForConnectingSceneSession:(UISceneSession*)session
+                                   options:(UISceneConnectionOptions*)options
+{
+  UISceneConfiguration* config = [[UISceneConfiguration alloc] initWithName:@"Default Configuration"
+                                                                sessionRole:session.role];
+  config.delegateClass = NSClassFromString(@"PSOSceneDelegate");
+  return config;
+}
+
+@end
+
+@interface PSOSceneDelegate : UIResponder <UIWindowSceneDelegate>
+@property(nonatomic, strong) UIWindow* window;
+@end
+
+@implementation PSOSceneDelegate
+
+- (void)scene:(UIScene*)scene
+    willConnectToSession:(UISceneSession*)session
+                 options:(UISceneConnectionOptions*)connectionOptions
+{
+  if (![scene isKindOfClass:[UIWindowScene class]])
+    return;
+  self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
   self.window.rootViewController = [[PSOGameViewController alloc] init];
   [self.window makeKeyAndVisible];
-  return YES;
 }
 
 - (PSOGameViewController*)game
@@ -32,12 +59,12 @@
   return (PSOGameViewController*)self.window.rootViewController;
 }
 
-- (void)applicationWillResignActive:(UIApplication*)application
+- (void)sceneWillResignActive:(UIScene*)scene
 {
   [[self game] setPaused:YES];
 }
 
-- (void)applicationDidBecomeActive:(UIApplication*)application
+- (void)sceneDidBecomeActive:(UIScene*)scene
 {
   [[self game] setPaused:NO];
 }
