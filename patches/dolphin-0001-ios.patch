@@ -132,6 +132,31 @@ index 0d66890..883a94b 100644
    if (JITPageWriteNestCounter() == 0)
    {
      pthread_jit_write_protect_np(1);
+diff --git a/Source/Core/Core/CMakeLists.txt b/Source/Core/Core/CMakeLists.txt
+index f30654c..dbb6101 100644
+--- a/Source/Core/Core/CMakeLists.txt
++++ b/Source/Core/Core/CMakeLists.txt
+@@ -766,8 +766,6 @@ PUBLIC
+   pugixml
+   sfml-network
+   videonull
+-  videoogl
+-  videosoftware
+ 
+ PRIVATE
+   FatFs
+@@ -777,6 +775,11 @@ PRIVATE
+   ZLIB::ZLIB
+ )
+ 
++# The OpenGL and software backends aren't built on iOS (no OpenGL there).
++if(NOT IOS)
++  target_link_libraries(core PUBLIC videoogl videosoftware)
++endif()
++
+ if(LIBUDEV_FOUND)
+   target_include_directories(core PRIVATE ${LIBUDEV_INCLUDE_DIR})
+   target_link_libraries(core PRIVATE ${LIBUDEV_LIBRARY})
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
 index e3581cc..ff23abc 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
