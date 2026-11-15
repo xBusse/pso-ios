@@ -69,7 +69,7 @@ static volatile int g_meseta, g_hp_tp, g_mag;
 static volatile int g_exp_mult = 1, g_rare_mult = 1;
 static volatile int g_camera_speed = 100; // percent; 0 = the C-stick doesn't turn the camera
 
-static int clamp_mult(int m) { return m < 1 ? 1 : m > 64 ? 64 : m; }
+static int clamp_mult(int m) { return m < 1 ? 1 : m > (1 << 28) ? (1 << 28) : m; } // 1 << 28 makes every rare roll succeed
 void pso_cheats_set_infinite_meseta(int on) { g_meseta = on != 0; }
 void pso_cheats_set_infinite_hp_tp(int on) { g_hp_tp = on != 0; }
 void pso_cheats_set_mag_always_hungry(int on) { g_mag = on != 0; }

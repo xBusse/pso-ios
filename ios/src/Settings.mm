@@ -345,7 +345,7 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
 
 + (NSArray<NSNumber*>*)expMultipliers
 {
-  return @[ @1, @2, @3, @5, @10 ];
+  return @[ @1, @2, @3, @5, @10, @20, @50, @100, @1000 ];
 }
 + (NSInteger)expMultiplier
 {
@@ -359,7 +359,8 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
 
 + (NSArray<NSNumber*>*)rareMultipliers
 {
-  return @[ @1, @2, @4, @8, @16, @32 ];
+  // The last one is high enough that every rare drop roll succeeds.
+  return @[ @1, @2, @4, @8, @16, @32, @64, @128, @256, @512, @1024, @PSORareMultiplierMax ];
 }
 + (NSInteger)rareMultiplier
 {

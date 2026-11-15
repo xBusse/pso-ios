@@ -58,6 +58,8 @@ typedef NS_ENUM(NSInteger, PSOPadButton) {
 @property(class, nonatomic) BOOL infiniteHpTp;
 @property(class, nonatomic) BOOL magAlwaysHungry;
 @property(class, nonatomic) NSInteger expMultiplier;   // 1 = off
+// A rare multiplier that turns every rare drop roll into a sure thing.
+#define PSORareMultiplierMax (1 << 28)
 @property(class, nonatomic) NSInteger rareMultiplier;  // 1 = off
 + (NSArray<NSNumber*>*)expMultipliers;
 + (NSArray<NSNumber*>*)rareMultipliers;

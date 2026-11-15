@@ -71,6 +71,8 @@ static NSInteger Cycle(NSArray<NSNumber*>* values, NSInteger current, NSInteger 
 
 static NSString* Multiplier(NSInteger m)
 {
+  if (m >= PSORareMultiplierMax)
+    return @"Max";
   return m <= 1 ? @"Off" : [NSString stringWithFormat:@"%ldx", (long)m];
 }
 
@@ -117,7 +119,7 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
                    PSOSettings.expMultiplier = Cycle(PSOSettings.expMultipliers, PSOSettings.expMultiplier, d);
                  }],
     [PSOMenuItem choice:@"RARE DROP BOOST"
-                   help:@"Multiplies the chance of rare items from enemies and boxes."
+                   help:@"Multiplies the chance of rare items from enemies and boxes. Max: every rare drop roll succeeds."
                   value:^{
                     return Multiplier(PSOSettings.rareMultiplier);
                   }
