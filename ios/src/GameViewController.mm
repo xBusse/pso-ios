@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import "PSOHost.h"
 #import "TouchControls.h"
@@ -17,12 +18,17 @@
 }
 @end
 
+@interface PSOGameViewController () <UIDocumentPickerDelegate>
+@end
+
 @implementation PSOGameViewController
 {
   PSOMetalView* _metalView;
   PSOTouchControls* _touchControls;
   UILabel* _message;
+  UIButton* _importButton;
   BOOL _started;
+  BOOL _importing;
 }
 
 - (void)loadView
@@ -47,6 +53,17 @@
   _message.textAlignment = NSTextAlignmentCenter;
   _message.hidden = YES;
   [root addSubview:_message];
+
+  _importButton = [UIButton buttonWithType:UIButtonTypeSystem];
+  [_importButton setTitle:@"Import game files…" forState:UIControlStateNormal];
+  _importButton.titleLabel.font = [UIFont boldSystemFontOfSize:20];
+  _importButton.frame = CGRectMake(0, 0, 260, 50);
+  _importButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
+                                   UIViewAutoresizingFlexibleTopMargin;
+  _importButton.center = CGPointMake(CGRectGetMidX(root.bounds), CGRectGetMaxY(root.bounds) - 60);
+  _importButton.hidden = YES;
+  [_importButton addTarget:self action:@selector(chooseGameFolder) forControlEvents:UIControlEventTouchUpInside];
+  [root addSubview:_importButton];
 
   self.view = root;
 }
@@ -82,6 +99,92 @@
   _message.text = text;
   _message.hidden = NO;
   _touchControls.hidden = YES;
+  _importButton.hidden = YES;
+}
+
+// ---- Game files ------------------------------------------------------------------
+
++ (BOOL)isGameFolder:(NSURL*)url
+{
+  NSFileManager* fm = NSFileManager.defaultManager;
+  return [fm fileExistsAtPath:[url URLByAppendingPathComponent:@"sys/main.dol"].path] &&
+         [fm fileExistsAtPath:[url URLByAppendingPathComponent:@"files/PsoV3.dol"].path];
+}
+
+- (void)chooseGameFolder
+{
+  UIDocumentPickerViewController* picker =
+      [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ] asCopy:NO];
+  picker.delegate = self;
+  picker.allowsMultipleSelection = NO;
+  [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
+{
+  NSURL* picked = urls.firstObject;
+  if (!picked || _importing)
+    return;
+  _importing = YES;
+  [self showMessage:@"Copying game files…\n\nThis takes a few minutes (about 1.4 GB). Keep the app open."];
+
+  NSString* dest = [[self documentsDirectory] stringByAppendingPathComponent:@"pso"];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    const BOOL scoped = [picked startAccessingSecurityScopedResource];
+    __block NSError* error = nil;
+    __block NSString* problem = nil;
+
+    // A coordinated read makes iCloud Drive download the folder first.
+    NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+    NSError* coordError = nil;
+    [coordinator coordinateReadingItemAtURL:picked
+                                    options:0
+                                      error:&coordError
+                                 byAccessor:^(NSURL* url) {
+                                   // Accept either the pso folder itself or a folder that contains it.
+                                   NSURL* source = url;
+                                   if (![PSOGameViewController isGameFolder:source])
+                                     source = [url URLByAppendingPathComponent:@"pso"];
+                                   if (![PSOGameViewController isGameFolder:source])
+                                   {
+                                     problem = @"That folder doesn't look like the PSO game files. Pick the "
+                                               @"\"pso\" folder that has \"sys\" and \"files\" inside it.";
+                                     return;
+                                   }
+                                   NSFileManager* fm = NSFileManager.defaultManager;
+                                   [fm removeItemAtPath:dest error:nil];
+                                   NSError* copyError = nil;
+                                   if (![fm copyItemAtURL:source toURL:[NSURL fileURLWithPath:dest] error:&copyError])
+                                     error = copyError;
+                                 }];
+    if (scoped)
+      [picked stopAccessingSecurityScopedResource];
+    if (!problem && (coordError || error))
+      problem = [NSString stringWithFormat:@"Couldn't copy the game files: %@",
+                                           (error ?: coordError).localizedDescription];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self->_importing = NO;
+      if (problem)
+      {
+        [self showMissingFiles:problem];
+        return;
+      }
+      self->_message.hidden = YES;
+      [self controllersChanged];
+      [self startIfReady];
+    });
+  });
+}
+
+- (void)showMissingFiles:(NSString*)detail
+{
+  NSString* text = @"Game files not found.\n\nTap Import and pick the \"pso\" folder (from iCloud Drive or "
+                   @"anywhere in Files), or copy it into On My iPhone → PSO with the Files app or Finder.";
+  if (detail)
+    text = [detail stringByAppendingFormat:@"\n\n%@", text];
+  [self showMessage:text];
+  _importButton.hidden = NO;
 }
 
 - (void)startIfReady
@@ -94,8 +197,7 @@
   if (![fm fileExistsAtPath:[game stringByAppendingPathComponent:@"sys/main.dol"]] ||
       ![fm fileExistsAtPath:[game stringByAppendingPathComponent:@"files/PsoV3.dol"]])
   {
-    [self showMessage:@"Game files not found.\n\nCopy the \"pso\" folder from pso-ios/extracted on your Mac "
-                      @"into this app's files (Finder → your iPhone → Files → PSO), then reopen the app."];
+    [self showMissingFiles:nil];
     return;
   }
   [fm createDirectoryAtPath:user withIntermediateDirectories:YES attributes:nil error:nil];

@@ -111,7 +111,8 @@ target_link_libraries(PSO PRIVATE
   "-framework AVFoundation"
   "-framework AudioToolbox"
   "-framework CoreAudio"
-  "-framework CoreMotion")
+  "-framework CoreMotion"
+  "-framework UniformTypeIdentifiers")
 
 # Bundle layout: Dolphin's Sys data next to the executable, the game module in
 # Frameworks/ (the app loads it with dlopen).
