@@ -5,7 +5,8 @@
 There are two ways to get it:
 
 - **Download the app** ([PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa)),
-  sideload it, and import your own disc image. Nothing to build. It runs the game's code from your disc on
+  sideload it, and import your own disc image. Nothing to build; see
+  [Install](#install-no-mac-or-build-needed). It runs the game's code from your disc on
   Dolphin's CachedInterpreter, which keeps full speed on recent iPhones.
 - **Build it from your own copy of the game.** The game's PowerPC code is translated ahead of time into native
   ARM code (static recompilation), which leaves more headroom on older devices. See
@@ -15,12 +16,50 @@ Neither needs a JIT, so no jailbreak or special entitlements. Graphics, sound an
 come from Dolphin's emulation code. No game data is in this repo or in the app; the app reads the game from
 your own disc image.
 
-## Install
+## Install (no Mac or build needed)
 
-1. Download [PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa)
-   and install it with AltStore, SideStore, Sideloadly or a similar sideloading tool.
-2. Open the app, choose **Game Files → Import disc image**, and pick your ISO, CISO, GCZ or RVZ of
-   *Phantasy Star Online Episode I & II Plus* (USA, v1.02) from Files or iCloud Drive.
+You need an iPhone or iPad on iOS 16 or later, and your own disc image of *Phantasy Star Online Episode I & II
+Plus* (USA, v1.02, `GPOE8P`) as an ISO, CISO, GCZ or RVZ. The app contains no game data.
+
+**1. Download the app.**
+[PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa) always points to
+the newest build.
+
+**2. Sideload it.** The ipa is unsigned, so a sideloading tool signs it with your Apple ID as it installs. Any
+of these work:
+
+- [AltStore](https://altstore.io) or [SideStore](https://sidestore.io): install from the phone. With a free
+  Apple ID, sideloaded apps stop opening after 7 days until the tool refreshes them, and you can have 3 at a
+  time.
+- [Sideloadly](https://sideloadly.io): install from a Mac or Windows PC over USB or Wi-Fi. The same 7-day limit
+  applies with a free Apple ID.
+- A paid Apple Developer account removes the 7-day limit (a signature lasts a year).
+
+The first time, iOS asks you to allow it: turn on **Settings → Privacy & Security → Developer Mode** (the phone
+restarts), and if it says "Untrusted Developer", trust your Apple ID under **Settings → General → VPN & Device
+Management**. The app doesn't need a JIT, so there's nothing else to enable.
+
+**3. Import your disc image.** Copy the disc image to the phone first (iCloud Drive, AirDrop to Files, or Finder
+on a Mac). Then open the app, choose **Game Files → Import disc image**, and pick it. The app checks it's the
+right game and extracts it (about 1.4 GB; keep the app open until it says *Game files ready*). You can delete the
+disc image afterwards. If you copied it into **On My iPhone → PSO** instead, use **Use disc image in app folder**.
+
+**4. Play.** Touch controls are on screen; a Bluetooth controller works too. Settings, mods and online play are
+on the start screen.
+
+**Updating:** install the newer ipa over the old app with the same tool. Your saves and game files stay.
+Deleting the app deletes them too, so back up **On My iPhone → PSO → User** (memory cards and settings) first
+if you ever need to.
+
+**If something goes wrong:**
+
+- Black screen or a hang at boot: set **Settings → Mods → Load cheats** to Off, reopen the app, and try again.
+- Slow or stuttering: **Settings → Debug → Show FPS** shows the frame rate. Older devices may not hold full
+  speed with the downloadable app; [building your own](#building-for-ios-without-a-mac) runs recompiled code,
+  which is faster.
+- When you report a problem, attach `console.log` and `dolphin.log` from **On My iPhone → PSO → User → Logs**.
+  Turning on **Settings → Debug → Speed log** first (then reopening the app) adds the emulation speed to
+  `console.log`.
 
 ## What you get
 
