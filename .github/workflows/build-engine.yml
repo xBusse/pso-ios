@@ -1,0 +1,85 @@
+# Builds the prebuilt engine: the iOS app and runtime with no game code (plus the
+# Mac DolRecomp), and publishes it as a release named engine-<branch>-<commit>.
+#
+# People's own builds (build-ipa.yml, in their private copies) download it and only
+# compile the game module from their PsoV3.dol, which takes minutes instead of an
+# hour. The engine contains nothing from the game, so it's safe to publish, and
+# Actions minutes are free for public repositories.
+
+name: Build engine
+
+on:
+  push:
+    branches: [main, prebuilt-engine]
+    paths:
+      - "ios/**"
+      - "lib/**"
+      - "mods/**"
+      - "patches/**"
+      - "scripts/**"
+      - "tools/**"
+      - "Makefile"
+      - ".gitmodules"
+      - ".github/workflows/build-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    # Only the main project publishes engines; private copies build the game instead.
+    if: github.repository == 'xBusse/pso-ios'
+    runs-on: macos-26
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install ninja pkg-config || true
+          cmake --version | head -n 1
+          xcodebuild -version
+
+      - name: Fetch dependencies
+        run: make submodules
+
+      - name: Build the engine
+        env:
+          IPA_COPY_DIR: ""
+        run: make ios-engine
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          short="$(git rev-parse --short=12 HEAD)"
+          branch="${BRANCH//\//-}"
+          tag="engine-$branch-$short"
+          tarball="build/pso-engine-$short.tar.gz"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$tarball" --clobber
+          else
+            gh release create "$tag" "$tarball" \
+              --target "$GITHUB_SHA" \
+              --prerelease --latest=false \
+              --title "Engine $branch $short" \
+              --notes "Prebuilt engine (no game code) for $branch at $GITHUB_SHA. Used by the Build iOS app workflow in your own private copy; see docs/build-with-github.md."
+          fi
+          echo "Published $tag"
+
+          # Keep the five newest engines per branch.
+          gh release list --limit 200 --json tagName,createdAt |
+            jq -r --arg p "engine-$branch-" \
+              '[.[] | select((.tagName | startswith($p)) and (.tagName | ltrimstr($p) | test("^[0-9a-f]{12}$")))]
+               | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+          while read -r old; do
+            echo "Removing old engine $old"
+            gh release delete "$old" --cleanup-tag --yes
+          done

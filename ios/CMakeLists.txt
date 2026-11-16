@@ -5,6 +5,10 @@ cmake_minimum_required(VERSION 3.24)
 #         -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
 #         -DPSO_GENERATED_DIR=<dolrecomp output>/generated
 # `make ios` in the repo root does all of this.
+#
+# With -DPSO_ENGINE_ONLY=ON it builds the app without the game module (no
+# game code at all): `make ios-engine` packages that as the prebuilt engine,
+# and ios/game-module builds the module on its own (`make ios-game`).
 
 project(PSOiOS LANGUAGES C CXX OBJC OBJCXX)
 
@@ -18,8 +22,9 @@ set(DOLPHIN_DIR "${MG_DIR}/vendor/dolphin")
 set(PSO_GENERATED_DIR "" CACHE PATH "DolRecomp output directory for PsoV3.dol (contains generated.h)")
 set(PSO_BUNDLE_ID "com.xbusse.pso" CACHE STRING "App bundle identifier")
 set(PSO_VERSION "0.1" CACHE STRING "App version")
+option(PSO_ENGINE_ONLY "Build the app without the game module (the prebuilt engine)" OFF)
 
-if(NOT EXISTS "${PSO_GENERATED_DIR}/generated.h")
+if(NOT PSO_ENGINE_ONLY AND NOT EXISTS "${PSO_GENERATED_DIR}/generated.h")
   message(FATAL_ERROR "Set PSO_GENERATED_DIR to the DolRecomp output (generated/) for PsoV3.dol")
 endif()
 
@@ -58,15 +63,10 @@ add_subdirectory("${MG_DIR}" moderngekko EXCLUDE_FROM_ALL)
 
 # ---- Game module: the recompiled PsoV3.dol -----------------------------------
 
-set(GAME_ID "GPOE8P" CACHE STRING "" FORCE)
-set(GENERATED_DIR "${PSO_GENERATED_DIR}" CACHE PATH "" FORCE)
-set(GXRUNTIME_DIR "${DOLPHIN_DIR}/GXRuntime" CACHE PATH "" FORCE)
-set(CHASSIS_ABI_DIR "${DOLPHIN_DIR}/Source/Core/Core/PowerPC/StaticRecomp" CACHE PATH "" FORCE)
-add_subdirectory("${DOLPHIN_DIR}/module-template" game-module EXCLUDE_FROM_ALL)
 set(PSO_MODULE_TARGET gGPOE8P_recomp)
-set_target_properties(${PSO_MODULE_TARGET} PROPERTIES
-  INSTALL_NAME_DIR "@rpath"
-  BUILD_WITH_INSTALL_NAME_DIR ON)
+if(NOT PSO_ENGINE_ONLY)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/game-module.cmake")
+endif()
 
 # ---- App ---------------------------------------------------------------------
 
@@ -83,7 +83,9 @@ add_executable(PSO MACOSX_BUNDLE
   ../mods/widescreen/widescreen.c
   ../mods/cheats/cheats.c
 )
-add_dependencies(PSO ${PSO_MODULE_TARGET})
+if(NOT PSO_ENGINE_ONLY)
+  add_dependencies(PSO ${PSO_MODULE_TARGET})
+endif()
 
 set_target_properties(PSO PROPERTIES
   OUTPUT_NAME "PSO"
@@ -130,5 +132,9 @@ target_link_libraries(PSO PRIVATE
 add_custom_command(TARGET PSO POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${DOLPHIN_DIR}/Data/Sys" "$<TARGET_BUNDLE_DIR:PSO>/Sys"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_DIR:PSO>/Frameworks"
-  COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:${PSO_MODULE_TARGET}>" "$<TARGET_BUNDLE_DIR:PSO>/Frameworks/"
-  COMMENT "Copying Sys data and the game module into PSO.app")
+  COMMENT "Copying Sys data into PSO.app")
+if(NOT PSO_ENGINE_ONLY)
+  add_custom_command(TARGET PSO POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:${PSO_MODULE_TARGET}>" "$<TARGET_BUNDLE_DIR:PSO>/Frameworks/"
+    COMMENT "Copying the game module into PSO.app")
+endif()

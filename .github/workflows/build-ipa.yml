@@ -7,6 +7,10 @@
 # The code that gets built comes from the main repo (the "source" input), so each run builds the
 # newest version and your copy never needs updating. See docs/build-with-github.md.
 #
+# Normally it downloads the main repo's prebuilt engine (the app without game code) and only
+# compiles the game module from your PsoV3.dol: about 10 to 15 minutes. With no engine for that
+# branch, or with "full build" ticked, it builds everything, which takes about an hour.
+#
 # The .ipa contains the recompiled game, so this refuses to run in a public repo.
 
 name: Build iOS app
@@ -18,8 +22,12 @@ on:
         description: "Repository to build (owner/name), or 'this' for this copy's own code"
         default: xBusse/pso-ios
       ref:
-        description: Branch or tag of that repository
+        description: Branch of that repository
         default: main
+      full:
+        description: "Full build (ignore the prebuilt engine; about an hour)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,11 +48,48 @@ jobs:
         with:
           path: own
 
+      - name: Find a prebuilt engine
+        id: engine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ (inputs.source == 'this' || inputs.source == github.repository) && github.repository || inputs.source }}
+          REF: ${{ inputs.ref }}
+          FULL: ${{ inputs.full }}
+          THIS: ${{ inputs.source == 'this' || inputs.source == github.repository }}
+        run: |
+          set -euo pipefail
+          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          if [ "$FULL" = "true" ] || [ "$THIS" = "true" ]; then
+            echo "Full build requested."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch="${REF//\//-}"
+          tag="$(gh release list --repo "$SOURCE" --limit 200 --json tagName,createdAt 2>/dev/null |
+                 jq -r --arg p "engine-$branch-" \
+                   '[.[] | select((.tagName | startswith($p)) and (.tagName | ltrimstr($p) | test("^[0-9a-f]{12}$")))]
+                    | sort_by(.createdAt) | last | .tagName // empty' || true)"
+          if [ -z "$tag" ]; then
+            echo "::notice::No prebuilt engine for $SOURCE $REF, so this is a full build (about an hour)."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/engine"
+          gh release download "$tag" --repo "$SOURCE" --pattern 'pso-engine-*.tar.gz' --dir "$RUNNER_TEMP/engine"
+          tarball="$(ls "$RUNNER_TEMP"/engine/pso-engine-*.tar.gz | head -n 1)"
+          commit="$(tar -xzOf "$tarball" ./engine.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["commit"])')"
+          echo "Using engine $tag (commit $commit)"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          # Build the game module from exactly the commit the engine came from.
+          echo "ref=$commit" >> "$GITHUB_OUTPUT"
+
       - name: Get the code to build
         uses: actions/checkout@v4
         with:
-          repository: ${{ (inputs.source == 'this' || inputs.source == github.repository) && github.repository || inputs.source }}
-          ref: ${{ inputs.ref }}
+          repository: ${{ steps.engine.outputs.source }}
+          ref: ${{ steps.engine.outputs.ref }}
           path: src
 
       - name: Find PsoV3.dol
@@ -82,11 +127,20 @@ jobs:
           echo "ninja $(ninja --version)"
           xcodebuild -version
 
-      - name: Fetch dependencies
+      - name: Build (game module on the prebuilt engine)
+        if: steps.engine.outputs.found == 'true'
+        working-directory: src
+        env:
+          IPA_COPY_DIR: ""
+        run: make ios-game ENGINE="${{ steps.engine.outputs.tarball }}" DOL="$RUNNER_TEMP/dol/PsoV3.dol"
+
+      - name: Fetch dependencies (full build)
+        if: steps.engine.outputs.found != 'true'
         working-directory: src
         run: make submodules
 
-      - name: Build
+      - name: Build (full)
+        if: steps.engine.outputs.found != 'true'
         working-directory: src
         env:
           IPA_COPY_DIR: ""

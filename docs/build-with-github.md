@@ -12,10 +12,11 @@ a computer is easiest, but every step also works in Safari on an iPhone or iPad.
 
 **Why this is set up this way.** The app is built from your disc's game program, `PsoV3.dol`. That file is
 Sega's code, so it can't be shared, and the app built from it can't be shared either. You keep it in a
-**private** repository (a project folder on GitHub that only you can see). GitHub's Mac takes the newest app
-code from the main project, adds your `PsoV3.dol`, builds the app and gives it back only to you.
+**private** repository (a project folder on GitHub that only you can see). GitHub's Mac downloads the main
+project's prebuilt engine (the app without any game code), turns your `PsoV3.dol` into the game part, puts the
+two together and gives the app back only to you.
 
-The build takes about **45 to 60 minutes**. You do steps 1 to 3 once. After that, getting a new version only takes
+The build takes about **10 to 15 minutes**. You do steps 1 to 3 once. After that, getting a new version only takes
 step 4 again.
 
 ---
@@ -77,14 +78,16 @@ Releases of a private repository are private too. Don't skip "Publish": the buil
 1. In your repository, open the **Actions** tab. If GitHub asks, click
    **I understand my workflows, go ahead and enable them**.
 2. On the left, click **Build iOS app**.
-3. On the right, click **Run workflow**, leave the two boxes as they are, and click the green
+3. On the right, click **Run workflow**, leave the boxes as they are, and click the green
    **Run workflow** button.
 4. A new run appears in the list after a few seconds (refresh if it doesn't). It shows a yellow dot while it
-   builds and turns into a green tick when it's done, about **45 to 60 minutes** later. You can close the page in the
+   builds and turns into a green tick when it's done, about **10 to 15 minutes** later. You can close the page in the
    meantime; GitHub emails you if a run fails.
 
-The two boxes are for testing other versions: **source** is the project the code comes from and **ref** is its
-branch or tag. Leave them alone unless someone tells you otherwise.
+The boxes are for testing other versions: **source** is the project the code comes from and **ref** is its
+branch. **Full build** builds everything from scratch instead of using the prebuilt engine, which takes about an
+hour (a run also does this by itself if that branch has no prebuilt engine). Leave them alone unless someone tells
+you otherwise.
 
 ## Step 5: Download the app
 
@@ -118,7 +121,8 @@ over the old app keeps your saves and settings.
 
 Building on GitHub's Macs is free up to a monthly allowance. For private repositories, GitHub counts each Mac
 minute as 10 minutes from that allowance. The free plan includes 2,000 minutes a month, which is about
-**200 Mac minutes**, so roughly **3 builds a month**. The allowance resets each month.
+**200 Mac minutes**, so roughly **12 builds a month** (a full build uses about four times as much). The allowance
+resets each month.
 
 - See how much you've used under your profile picture > **Settings > Billing and plans**.
 - On a free account with no payment method, GitHub stops the build when the allowance runs out. It doesn't
@@ -139,7 +143,7 @@ why.
 | "isn't from the USA v1.02 disc" | The file is from a different version of the game (Japanese, European or the original non-Plus release), or it's `main.dol` instead of `PsoV3.dol`. You need the USA *Plus* disc. |
 | The run sits on "Queued" or "Waiting for a runner" | GitHub's Macs are busy, or you've used this month's allowance (see **Cost**). |
 | The run fails in **Get the code to build** | The **source** or **ref** box was changed. Run it again with the default values. |
-| It fails in **Build** | Run it once more (GitHub sometimes has a hiccup). If it fails again, report it with the last lines of that step's log. |
+| It fails in **Build** | Run it once more (GitHub sometimes has a hiccup). If it fails again, try it with **Full build** ticked, and report it with the last lines of that step's log. |
 
 ## Questions
 

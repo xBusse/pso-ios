@@ -8,6 +8,8 @@
 #   make run                      Recompile if needed and launch the game
 #   make names                    Write build/pso.map (decomp function names)
 #   make ios                      Build build/PSO-unsigned.ipa (needs Xcode)
+#   make ios-engine               Build the prebuilt engine (the app without game code)
+#   make ios-game ENGINE=... DOL=...  Add your PsoV3.dol to a prebuilt engine
 
 DOLRECOMP_DIR     := lib/DolRecomp
 MODERNGEKKO_DIR   := lib/ModernGekko
@@ -37,10 +39,10 @@ DOLPHIN_PATCHES := $(wildcard patches/dolphin-*.patch)
 DOLPHIN_DIR := $(MODERNGEKKO_DIR)/vendor/dolphin
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko host-dolrecomp patch-moderngekko user-config submodules decomp extract recompile run names ios icon clean clean-game
+.PHONY: help tools dolrecomp moderngekko host-dolrecomp patch-moderngekko user-config submodules decomp extract recompile run names ios ios-engine ios-game module-sources icon clean clean-game
 
 help:
-	@sed -n '4,11p' Makefile | sed 's/^# //'
+	@sed -n '4,12p' Makefile | sed 's/^# //'
 
 # DolRecomp and ModernGekko (with Dolphin and its libraries). Dolphin's
 # prebuilt Windows Qt and FFmpeg are large and unused here, so they're skipped.
@@ -147,6 +149,27 @@ ios: host-dolrecomp extract
 # App icon. `make icon` redraws the default; `make icon ICON=path/to/image`
 # uses your own picture instead (center-cropped to a square). Rebuild with
 # `make ios` afterwards.
+# The prebuilt engine: the iOS app and runtime with no game code, plus the Mac
+# DolRecomp (build/pso-engine-<commit>.tar.gz). The "Build engine" workflow
+# publishes it so other people's builds only need the game module.
+ios-engine: host-dolrecomp
+	JOBS=$(JOBS) scripts/build-ios-engine.sh
+
+# The game module needs only ModernGekko's own Dolphin checkout (no externals).
+module-sources:
+	@if [ ! -f "$(DOLPHIN_DIR)/module-template/CMakeLists.txt" ]; then \
+		git submodule sync; \
+		git submodule update --init --depth 1 $(MODERNGEKKO_DIR); \
+		git -C $(MODERNGEKKO_DIR) submodule update --init --depth 1 vendor/dolphin; \
+	fi
+
+# Your PsoV3.dol plus a prebuilt engine (ENGINE=engine .tar.gz or folder) -> ipa.
+# Check out the commit the engine was built from (its engine.json) first.
+ios-game: module-sources
+	@if [ -z "$(ENGINE)" ] || [ -z "$(DOL)" ]; then \
+		echo "usage: make ios-game ENGINE=pso-engine-<commit>.tar.gz DOL=/path/to/PsoV3.dol" >&2; exit 1; fi
+	JOBS=$(JOBS) scripts/build-ios-game.sh "$(ENGINE)" "$(DOL)"
+
 icon:
 	@if [ -n "$(ICON)" ]; then \
 	  w=$$(sips -g pixelWidth "$(ICON)" | awk '/pixelWidth/{print $$2}'); \
