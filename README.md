@@ -191,3 +191,24 @@ on whatever the cheat settings are.
 - [x] Online play on public servers (tested on Schthack) and private newserv servers
 - [ ] Known issue: the "go to the calendar?" option from the clock prompt leads to a black screen
 - [ ] Hosting a server from inside the app
+
+## Credits
+
+This project stands on other people's work:
+
+- **[DolRecomp](https://github.com/ExpansionPak/DolRecomp)** and **[ModernGekko](https://github.com/ExpansionPak/ModernGekko)**
+  by Hyperway and contributors (jw, Douglas Whittingham, smallington, flaffy, MrPoloGit and others): the recompiler
+  and the runtime. ModernGekko in turn credits SpecialK / aharonahdoot's RecompCore.
+- **[Dolphin](https://github.com/dolphin-emu/dolphin)** by the Dolphin Team: the video, audio and hardware
+  emulation inside ModernGekko, and the emulator for everything not recompiled.
+- **[pso-decomp](https://github.com/zeroz41/pso-decomp)** by zeroz and contributors: the decompilation that names
+  the game's functions and documents how it works. It's built with encounter's
+  [decomp-toolkit](https://github.com/encounter/decomp-toolkit) and [objdiff](https://github.com/encounter/objdiff).
+- **[newserv](https://github.com/fuzziqersoftware/newserv)** by fuzziqersoftware: the open-source PSO server used for
+  private play and for testing online support.
+- **[Schthack](https://schtserv.com)**: the community server tested with.
+- **[fzstd](https://github.com/101arrowz/fzstd)** by 101arrowz (MIT): Zstandard decoding in the extractor page.
+- **[Baloo 2](https://github.com/EkType/Baloo2)** by Ek Type (SIL OFL): the menu font.
+
+*Phantasy Star Online* is a trademark of SEGA. This project is not affiliated with or endorsed by SEGA or Nintendo,
+and it includes no game data: you build it from your own copy of the game.
