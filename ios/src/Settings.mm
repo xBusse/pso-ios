@@ -332,6 +332,16 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
   Set(@"speedLog", @(v));
 }
 
++ (BOOL)showFPS
+{
+  return [Defaults() boolForKey:@"showFPS"];
+}
++ (void)setShowFPS:(BOOL)v
+{
+  Set(@"showFPS", @(v));
+  PSOSetShowFPS(v);
+}
+
 + (BOOL)infiniteMeseta
 {
   return [Defaults() boolForKey:@"infiniteMeseta"];
@@ -425,6 +435,7 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
   PSOSetHUDScale((int)self.hudScale);
   PSOSetRToggle(self.rToggle);
   PSOSetCameraSpeed((int)self.cameraSpeed);
+  PSOSetShowFPS(self.showFPS);
   ApplyCheats();
   PSOSetNetwork(self.networkMode, self.networkServerAddress);
 }

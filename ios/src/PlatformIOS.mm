@@ -54,6 +54,7 @@ struct VideoSettings
 };
 std::mutex s_settings_mutex;
 VideoSettings s_video;
+std::atomic<bool> s_show_fps{false};
 int s_volume = 100;
 
 struct NetworkSettings
@@ -104,6 +105,8 @@ void ApplySettingsNow()
   }
   pso_widescreen_set_factor(picture_aspect / (4.0f / 3.0f));
   Config::SetBase(Config::GFX_EFB_SCALE, std::clamp(v.scale, 1, 4));
+  // Settings > Debug > SHOW FPS: Dolphin's own on-screen counter.
+  Config::SetBase(Config::GFX_SHOW_FPS, s_show_fps.load());
   Config::SetBase(Config::MAIN_AUDIO_VOLUME, std::clamp(volume, 0, 100));
   if (s_booted)
     AudioCommon::UpdateSoundStream(Core::System::GetInstance());
@@ -486,6 +489,12 @@ void PSOSetVideoSettings(PSODisplayMode mode, int screen_width, int screen_heigh
     std::lock_guard lock(s_settings_mutex);
     s_video = {mode, screen_width, screen_height, resolution_scale};
   }
+  RunOnHost([](Core::System&) { ApplySettingsNow(); });
+}
+
+void PSOSetShowFPS(bool show)
+{
+  s_show_fps = show;
   RunOnHost([](Core::System&) { ApplySettingsNow(); });
 }
 

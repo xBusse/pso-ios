@@ -58,6 +58,8 @@ typedef NS_ENUM(NSInteger, PSOPadButton) {
 @property(class, nonatomic) BOOL modsEnabled;
 // Writes the emulated speed and CPU position to console.log every 2 s (read at launch).
 @property(class, nonatomic) BOOL speedLog;
+// Dolphin's on-screen FPS counter. Applies right away.
+@property(class, nonatomic) BOOL showFPS;
 // Cheats.
 @property(class, nonatomic) BOOL infiniteMeseta;
 @property(class, nonatomic) BOOL infiniteHpTp;

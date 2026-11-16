@@ -144,6 +144,7 @@ it to the engine release as `PSO-interpreter-unsigned-<commit>.ipa`).
   `patches/dolphin-0006-cached-interpreter-fallback.patch` adds the CachedInterpreter option and makes it give
   control back at mod hooks, where the hook runs and the hooked instruction is stepped once on the
   interpreter, so widescreen, the cheats and the camera still work.
+- **Settings → Debug → Show FPS** puts Dolphin's frame-rate counter on screen.
 - **Settings → Debug → Speed log** writes the emulation speed and CPU position to `User/Logs/console.log` every
   2 seconds (applies at the next launch).
 - `make run-interp` runs it on the Mac (`INTERP=plain` for the plain interpreter). The title bar shows the speed.

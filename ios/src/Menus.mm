@@ -351,6 +351,14 @@ static PSOPageViewController* MakeDebugPage(BOOL overGame)
                  adjust:^(NSInteger) {
                    PSOSettings.speedLog = !PSOSettings.speedLog;
                  }],
+    [PSOMenuItem choice:@"SHOW FPS"
+                   help:@"Shows the frame rate in the corner of the screen."
+                  value:^{
+                    return OnOff(PSOSettings.showFPS, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.showFPS = !PSOSettings.showFPS;
+                 }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];
     }],

@@ -51,6 +51,8 @@ void PSOClearAllInputs(void);
 
 // R as a toggle: each press flips it on/off instead of holding it.
 void PSOSetRToggle(bool enabled);
+// Dolphin's on-screen FPS counter (Settings > Debug > SHOW FPS).
+void PSOSetShowFPS(bool show);
 bool PSOIsRLatched(void);
 // Called on the main queue whenever the latched state changes.
 void PSOSetRLatchHandler(void (^handler)(bool latched));
