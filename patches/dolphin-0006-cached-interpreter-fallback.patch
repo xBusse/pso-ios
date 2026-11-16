@@ -145,7 +145,7 @@ index d084fea..cb072ab 100644
  u32 StaticRecompShouldYieldAt(u32 address);
 +void StaticRecompHeartbeat(Core::System& system);
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
-index d91ec2d..c96130d 100644
+index d91ec2d..54e5d1e 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
 +++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
 @@ -120,6 +120,7 @@ void StaticRecompCore::Run()
@@ -156,10 +156,10 @@ index d91ec2d..c96130d 100644
      const std::string current_game_id = SConfig::GetInstance().GetGameID();
      m_module_active = m_module && (current_game_id.empty() || current_game_id == m_module->game_id);
  
-@@ -239,6 +240,28 @@ void StaticRecompCore::Run()
-             m_host_call_passthrough_pc = ppc.pc;
-             m_host_call_passthrough = true;
+@@ -234,10 +235,38 @@ void StaticRecompCore::Run()
+             continue;
            }
+           SyncOut();
 +          {
 +            // Spin detector: the same hook firing over and over with guest time
 +            // standing still means control never got past it.
@@ -182,6 +182,18 @@ index d91ec2d..c96130d 100644
 +              spin_count = 0;
 +            }
 +          }
+           if (m_fallback_jit)
+           {
+-            m_host_call_passthrough_pc = ppc.pc;
+-            m_host_call_passthrough = true;
++            // Run the hooked instruction here, one step on the interpreter, so
++            // the fallback starts past the hook address. Handing the hook
++            // address itself to the fallback relied on a one-shot "don't yield
++            // here" flag, and the CachedInterpreter on iOS kept yielding at it
++            // anyway: the hook fired forever and the game hung on boot.
++            ppc.downcount -= interpreter.SingleStepInner();
++            ++m_fallback_steps;
++            continue;
+           }
          }
          // SingleStepInner delivers synchronous exceptions itself; external
-         // interrupts are delivered at slice start, as in Interpreter::Run.
