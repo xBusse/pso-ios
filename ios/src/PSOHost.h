@@ -17,6 +17,8 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
                   void (^on_exit)(NSString* error));
 
 void PSOSetPaused(bool paused);
+// Whether this launch loaded the widescreen and cheats mods (Settings > Mods > LOAD MODS).
+bool PSOModsLoaded(void);
 void PSORequestStop(void);
 
 // GameCube pad input for port 1, from the touch overlay or a controller.

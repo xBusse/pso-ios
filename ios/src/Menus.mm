@@ -86,6 +86,14 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
   __weak PSOPageViewController* weakPage = page;
 
   page.items = @[
+    [PSOMenuItem choice:@"LOAD MODS"
+                   help:@"Widescreen and cheats. Turn off to start the game without them. Takes effect the next time you open the app."
+                  value:^{
+                    return OnOff(PSOSettings.modsEnabled, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.modsEnabled = !PSOSettings.modsEnabled;
+                 }],
     [PSOMenuItem choice:@"INFINITE MESETA"
                    help:@"Keeps your meseta at 999,999."
                   value:^{
@@ -126,21 +134,31 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
                  adjust:^(NSInteger d) {
                    PSOSettings.rareMultiplier = Cycle(PSOSettings.rareMultipliers, PSOSettings.rareMultiplier, d);
                  }],
+    [PSOMenuItem choice:@"SPEED LOG"
+                   help:@"For troubleshooting: writes the emulation speed to User/Logs/console.log every 2 seconds. Takes effect the next time you open the app."
+                  value:^{
+                    return OnOff(PSOSettings.speedLog, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.speedLog = !PSOSettings.speedLog;
+                 }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];
     }],
   ];
-  // Public servers ban cheaters; the mods stay off there (Settings.cheatsAllowed).
-  for (PSOMenuItem* item in page.items)
+  // The cheats need the mods loaded, and public servers ban cheaters
+  // (Settings.cheatsAllowed). LOAD MODS (first) and SPEED LOG (last but one) always work.
+  const NSUInteger first_cheat = 1, last_cheat = page.items.count - 3;
+  for (NSUInteger i = first_cheat; i <= last_cheat; ++i)
   {
-    if (item.value)
-    {
-      item.enabled = ^{
-        return PSOSettings.cheatsAllowed;
-      };
-      if (!PSOSettings.cheatsAllowed)
-        item.help = @"Off while Network is set to a public server.";
-    }
+    PSOMenuItem* item = page.items[i];
+    item.enabled = ^{
+      return (BOOL)(PSOModsLoaded() && PSOSettings.cheatsAllowed);
+    };
+    if (!PSOModsLoaded())
+      item.help = @"Mods are off. Turn on LOAD MODS and reopen the app.";
+    else if (!PSOSettings.cheatsAllowed)
+      item.help = @"Off while Network is set to a public server.";
   }
   return page;
 }

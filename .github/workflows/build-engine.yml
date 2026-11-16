@@ -77,6 +77,18 @@ jobs:
           fi
           echo "Published $tag"
 
+          # main: the app also goes to a fixed release marked latest, so
+          # releases/latest/download/PSO-unsigned.ipa always gets the newest one.
+          if [ "$BRANCH" = main ]; then
+            cp "$interp" build/PSO-unsigned.ipa
+            gh release delete app --cleanup-tag --yes 2>/dev/null || true
+            gh release create app build/PSO-unsigned.ipa \
+              --target "$GITHUB_SHA" --latest \
+              --title "PSO for iOS ($short)" \
+              --notes "Unsigned app (sideload it with AltStore, SideStore, Sideloadly or similar). It contains no game code: import your own disc image with Game Files > Import disc image. Built from $GITHUB_SHA."
+            echo "Published app"
+          fi
+
           # Keep the five newest engines per branch.
           gh release list --limit 200 --json tagName,createdAt |
             jq -r --arg p "engine-$branch-" \

@@ -2,6 +2,7 @@
 // owned by the UIKit view, and runs the host loop on the runtime's thread.
 
 #import "PSOHost.h"
+#import "Settings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -40,6 +41,7 @@ std::mutex s_runtime_mutex;
 moderngekko::Runtime* s_runtime = nullptr;
 std::atomic<bool> s_input_registered{false};
 std::atomic<bool> s_booted{false};
+std::atomic<bool> s_mods_loaded{false};
 
 // Settings, kept here so they can be (re)applied once the runtime exists.
 struct VideoSettings
@@ -295,6 +297,14 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
   const std::string user = user_dir.UTF8String;
   const std::string module = module_path.UTF8String;
 
+  // Read on the main thread, before the runtime thread starts.
+  // Settings > Mods > LOAD MODS off, or (older troubleshooting switch) an empty file
+  // named "no-mods" in the User folder: start without the widescreen and cheats mods.
+  const bool load_mods =
+      PSOSettings.modsEnabled &&
+      ![NSFileManager.defaultManager fileExistsAtPath:[user_dir stringByAppendingPathComponent:@"no-mods"]];
+  s_mods_loaded = load_mods;
+  const bool speed_log = PSOSettings.speedLog;
   NSThread* thread = [[NSThread alloc] initWithBlock:^{
     moderngekko::RuntimeConfig config;
     config.game_root = game;
@@ -310,19 +320,18 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     {
       printf("PSO: no game module in the app, running on the interpreter\n");
       config.allow_interpreter = true;
-      // Speed and CPU position every 2 s in console.log (User/Logs).
+    }
+    // Settings > Mods > SPEED LOG: speed and CPU position every 2 s in console.log (User/Logs).
+    if (speed_log)
       setenv("STATICRECOMP_HEARTBEAT", "1", 1);
-    }
-    // Troubleshooting: an empty file named "no-mods" in the User folder starts the
-    // game without the widescreen and cheats mods (and their hooks).
-    if ([NSFileManager.defaultManager fileExistsAtPath:[@(user.c_str()) stringByAppendingPathComponent:@"no-mods"]])
-    {
-      printf("PSO: User/no-mods found, starting without mods\n");
-    }
-    else
+    if (load_mods)
     {
       config.attached_mods.push_back(pso_widescreen_descriptor());
       config.attached_mods.push_back(pso_cheats_descriptor());
+    }
+    else
+    {
+      printf("PSO: mods turned off, starting without them\n");
     }
     config.graphics.backend = "Metal";
     config.show_fps_in_title = false;
@@ -510,6 +519,11 @@ void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hun
   pso_cheats_set_mag_always_hungry(mag_always_hungry);
   pso_cheats_set_exp_multiplier(exp_multiplier);
   pso_cheats_set_rare_multiplier(rare_multiplier);
+}
+
+bool PSOModsLoaded(void)
+{
+  return s_mods_loaded;
 }
 
 void PSOSetCameraSpeed(int percent)

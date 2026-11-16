@@ -2,12 +2,25 @@
 
 *Phantasy Star Online Episode I & II Plus* (GameCube, USA, `GPOE8P`) as a native iPhone and iPad app.
 
-The game's PowerPC code is translated ahead of time into native ARM code (static recompilation), so the game
-runs at full speed without a JIT. This is something an emulator can't do on a phone without jailbreaking or
-special entitlements. Graphics, sound and the other GameCube hardware come from Dolphin's emulation code.
+There are two ways to get it:
 
-No game data is in this repo. You build the app from your own copy of the game, and the app reads the game
-files from your own disc image.
+- **Download the app** ([PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa)),
+  sideload it, and import your own disc image. Nothing to build. It runs the game's code from your disc on
+  Dolphin's CachedInterpreter, which keeps full speed on recent iPhones.
+- **Build it from your own copy of the game.** The game's PowerPC code is translated ahead of time into native
+  ARM code (static recompilation), which leaves more headroom on older devices. See
+  [Building](#building-mac) below.
+
+Neither needs a JIT, so no jailbreak or special entitlements. Graphics, sound and the other GameCube hardware
+come from Dolphin's emulation code. No game data is in this repo or in the app; the app reads the game from
+your own disc image.
+
+## Install
+
+1. Download [PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa)
+   and install it with AltStore, SideStore, Sideloadly or a similar sideloading tool.
+2. Open the app, choose **Game Files → Import disc image**, and pick your ISO, CISO, GCZ or RVZ of
+   *Phantasy Star Online Episode I & II Plus* (USA, v1.02) from Files or iCloud Drive.
 
 ## What you get
 
@@ -49,6 +62,8 @@ files from your own disc image.
   original setup program.
 
 **Mods** (they switch off while you're on a public server)
+- **Load mods** turns the widescreen and cheat code off entirely, for troubleshooting (applies at the next
+  launch).
 - Infinite meseta, infinite HP/TP, and a mag you can feed at any time.
 - **EXP boost** up to 1000x. The "+EXP" number after a kill shows the boosted amount.
 - **Rare drop boost** up to 1024x, or Max, which makes every rare roll succeed.
@@ -117,17 +132,20 @@ To get `PsoV3.dol` without Dolphin, open [the extractor page](https://xbusse.git
 (`docs/extract/`): it copies the file out of an ISO, CISO, GCZ or RVZ image inside your browser, uploads nothing,
 and checks it's the right version.
 
-## Interpreter build (experimental, `interpreter-mode` branch)
+## The interpreter build (the downloadable app)
 
 The app with no game module at all: it runs the game's own code from your disc image on Dolphin's
-CachedInterpreter, so it needs no build step and can be shared. Each **Build engine** run attaches it to the
-engine release as `PSO-interpreter-unsigned-<commit>.ipa`. Install it and use **Game Files → Import disc
-image** as usual. Expect it to be slower than the recompiled build; how much is what this branch is finding out.
+CachedInterpreter, so it needs no build step and can be shared. Each **Build engine** run on `main` publishes it
+as [PSO-unsigned.ipa](https://github.com/xBusse/pso-ios/releases/latest/download/PSO-unsigned.ipa) (and attaches
+it to the engine release as `PSO-interpreter-unsigned-<commit>.ipa`).
 
 - The runtime picks the fallback with `STATICRECOMP_INTERPRETER` (unset: JIT, or the CachedInterpreter where
   there's no JIT; `cached`: the CachedInterpreter; anything else: the plain interpreter).
   `patches/dolphin-0006-cached-interpreter-fallback.patch` adds the CachedInterpreter option and makes it give
-  control back at mod hooks, so widescreen, the cheats and the camera still work.
+  control back at mod hooks, where the hook runs and the hooked instruction is stepped once on the
+  interpreter, so widescreen, the cheats and the camera still work.
+- **Settings → Mods → Speed log** writes the emulation speed and CPU position to `User/Logs/console.log` every
+  2 seconds (applies at the next launch).
 - `make run-interp` runs it on the Mac (`INTERP=plain` for the plain interpreter). The title bar shows the speed.
 
 ## Building for iOS (Mac with Xcode)

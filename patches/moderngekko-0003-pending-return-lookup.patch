@@ -1,0 +1,67 @@
+diff --git a/src/runtime/mod_loader.cpp b/src/runtime/mod_loader.cpp
+index 4b2345f..7b5ba61 100644
+--- a/src/runtime/mod_loader.cpp
++++ b/src/runtime/mod_loader.cpp
+@@ -131,6 +131,20 @@ struct ModManager::Impl {
+       callbacks;
+   std::vector<ModernGekkoModFunction *> import_slots;
+   std::vector<PendingReturn> pending_returns;
++  // How many pending_returns entries wait at each address. HandlesAddress runs
++  // for every block the interpreter fallback executes, so it must not walk
++  // pending_returns (up to 4096 entries in a long session).
++  std::unordered_map<std::uint32_t, std::uint32_t> pending_return_counts;
++
++  void AddPendingReturn(PendingReturn pending) {
++    ++pending_return_counts[pending.address];
++    pending_returns.push_back(std::move(pending));
++  }
++  void ForgetPendingReturn(std::uint32_t address) {
++    const auto it = pending_return_counts.find(address);
++    if (it != pending_return_counts.end() && --it->second == 0)
++      pending_return_counts.erase(it);
++  }
+   std::uint64_t interception_generation = 1;
+   bool runtime_started = false;
+   ModernGekkoModHostApi host_api{};
+@@ -548,6 +562,7 @@ void ModManager::Unload() {
+       *slot = nullptr;
+   }
+   m_impl->pending_returns.clear();
++  m_impl->pending_return_counts.clear();
+   m_impl->callbacks.clear();
+   m_impl->hooks.clear();
+   m_impl->patches.clear();
+@@ -572,6 +587,7 @@ bool ModManager::Dispatch(CPUState *state, std::uint32_t address) {
+       m_impl->pending_returns.back().stack_pointer == state->gpr[1]) {
+     auto pending = std::move(m_impl->pending_returns.back());
+     m_impl->pending_returns.pop_back();
++    m_impl->ForgetPendingReturn(pending.address);
+     ++m_impl->interception_generation;
+     for (auto it = pending.functions.rbegin(); it != pending.functions.rend();
+          ++it) {
+@@ -588,9 +604,11 @@ bool ModManager::Dispatch(CPUState *state, std::uint32_t address) {
+       *state = saved;
+     }
+     if (!hooks->second.returning.empty()) {
+-      if (m_impl->pending_returns.size() >= 4096u)
++      if (m_impl->pending_returns.size() >= 4096u) {
++        m_impl->ForgetPendingReturn(m_impl->pending_returns.front().address);
+         m_impl->pending_returns.erase(m_impl->pending_returns.begin());
+-      m_impl->pending_returns.push_back(
++      }
++      m_impl->AddPendingReturn(
+           {state->lr, state->gpr[1], hooks->second.returning});
+       ++m_impl->interception_generation;
+     }
+@@ -632,10 +650,7 @@ const std::vector<LoadedModInfo> &ModManager::GetLoadedMods() const {
+ bool ModManager::HandlesAddress(std::uint32_t address) const {
+   if (m_impl->patches.contains(address) || m_impl->hooks.contains(address))
+     return true;
+-  return std::ranges::any_of(m_impl->pending_returns,
+-                             [address](const Impl::PendingReturn &pending) {
+-                               return pending.address == address;
+-                             });
++  return m_impl->pending_return_counts.contains(address);
+ }
+ 
+ bool ModManager::HandlesRange(std::uint32_t start, std::uint32_t end) const {

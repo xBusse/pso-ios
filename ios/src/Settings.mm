@@ -313,6 +313,25 @@ static NSInteger OneOf(NSString* key, NSArray<NSNumber*>* allowed)
   return [allowed containsObject:@(v)] ? v : 1;
 }
 
++ (BOOL)modsEnabled
+{
+  id v = [Defaults() objectForKey:@"modsEnabled"];
+  return [v isKindOfClass:NSNumber.class] ? [v boolValue] : YES;
+}
++ (void)setModsEnabled:(BOOL)v
+{
+  Set(@"modsEnabled", @(v));
+}
+
++ (BOOL)speedLog
+{
+  return [Defaults() boolForKey:@"speedLog"];
+}
++ (void)setSpeedLog:(BOOL)v
+{
+  Set(@"speedLog", @(v));
+}
+
 + (BOOL)infiniteMeseta
 {
   return [Defaults() boolForKey:@"infiniteMeseta"];

@@ -47,7 +47,7 @@ index 23ca5b1..96bb361 100644
      } while (m_ppc_state.downcount > 0 && *state_ptr == CPU::State::Running);
    }
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
-index a89704f..a685e8b 100644
+index a89704f..98d88a7 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
 +++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
 @@ -25,10 +25,46 @@
@@ -97,7 +97,19 @@ index a89704f..a685e8b 100644
  u32 StaticRecompShouldYieldAt(u32 address)
  {
    return g_static_recomp_core && g_static_recomp_core->ShouldYieldAt(address);
-@@ -185,16 +221,31 @@ void StaticRecompCore::Init()
+@@ -126,11 +162,6 @@ bool StaticRecompCore::IsHostCallAddress(u32 address) const
+ 
+ bool StaticRecompCore::ShouldYieldAt(u32 address)
+ {
+-  if (m_host_call_passthrough && m_host_call_passthrough_pc == address)
+-  {
+-    m_host_call_passthrough = false;
+-    return false;
+-  }
+   if (m_module_active && DispatchableAt(address))
+     return true;
+   return IsHostCallAddress(address);
+@@ -185,16 +216,31 @@ void StaticRecompCore::Init()
    m_lockstep_verifier = std::make_unique<StaticRecompLockstep::StaticRecompLockstepVerifier>(*this);
    m_lockstep_verifier->Init();
  
@@ -136,10 +148,19 @@ index a89704f..a685e8b 100644
    {
      m_fallback_jit->SetStaticRecompFallback(true);
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.h b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.h
-index d084fea..cb072ab 100644
+index d084fea..a6152d0 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.h
 +++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.h
-@@ -216,3 +216,4 @@ private:
+@@ -165,8 +165,6 @@ private:
+   StaticRecompModuleSource m_module_source;
+   const StaticRecompModuleDesc* m_module = nullptr;
+   bool m_module_active = false;
+-  u32 m_host_call_passthrough_pc = 0;
+-  bool m_host_call_passthrough = false;
+   std::unique_ptr<JitBase> m_fallback_jit;
+ 
+   u64 m_native_dispatches = 0;
+@@ -216,3 +214,4 @@ private:
  
  extern StaticRecompCore* g_static_recomp_core;
  u32 StaticRecompShouldYieldAt(u32 address);
