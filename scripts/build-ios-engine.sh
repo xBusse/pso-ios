@@ -3,6 +3,10 @@
 # Mac DolRecomp that turns a PsoV3.dol into the module. It contains no game
 # code, so it can be shared; build-ios-game.sh adds a user's own game to it.
 #
+# Also writes build/PSO-interpreter-<time>.ipa: the same app on its own. With no
+# game module it runs the game's code from the player's disc on the interpreter,
+# so it can be installed as it is, with no build step.
+#
 # Writes build/pso-engine-<commit>.tar.gz containing:
 #   PSO.app/        the app, runtime and resources (Frameworks/ is empty)
 #   bin/dolrecomp   the recompiler (macOS arm64)
@@ -49,6 +53,9 @@ cat > "$KIT/engine.json" <<EOF
   "deployment_target": "$DEPLOYMENT_TARGET"
 }
 EOF
+
+# The interpreter build: the engine's app, ready to sideload. No IPA_COPY_DIR copy.
+IPA_COPY_DIR= package_ipa "$KIT/PSO.app" "$OUT" PSO-interpreter
 
 step "Packaging the engine"
 TARBALL="build/pso-engine-$SHORT.tar.gz"

@@ -10,7 +10,7 @@ name: Build engine
 
 on:
   push:
-    branches: [main, prebuilt-engine]
+    branches: [main, interpreter-mode]
     paths:
       - "ios/**"
       - "lib/**"
@@ -63,14 +63,17 @@ jobs:
           branch="${BRANCH//\//-}"
           tag="engine-$branch-$short"
           tarball="build/pso-engine-$short.tar.gz"
+          # The interpreter build (the engine's app alone): installable as it is.
+          interp="build/PSO-interpreter-unsigned-$short.ipa"
+          cp "$(readlink -f build/PSO-interpreter.ipa)" "$interp"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$tarball" --clobber
+            gh release upload "$tag" "$tarball" "$interp" --clobber
           else
-            gh release create "$tag" "$tarball" \
+            gh release create "$tag" "$tarball" "$interp" \
               --target "$GITHUB_SHA" \
               --prerelease --latest=false \
               --title "Engine $branch $short" \
-              --notes "Prebuilt engine (no game code) for $branch at $GITHUB_SHA. Used by the Build iOS app workflow in your own private copy; see docs/build-with-github.md."
+              --notes "Prebuilt engine (no game code) for $branch at $GITHUB_SHA. pso-engine-*.tar.gz is used by the Build iOS app workflow in your own private copy (docs/build-with-github.md). PSO-interpreter-unsigned-*.ipa is the app on its own, experimental: it runs the game from your disc image on the interpreter, with no build step."
           fi
           echo "Published $tag"
 

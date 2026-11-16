@@ -1,0 +1,79 @@
+diff --git a/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp b/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
+index 23ca5b1..b2664fe 100644
+--- a/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
++++ b/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
+@@ -25,6 +25,9 @@
+ #include "Core/PowerPC/PowerPC.h"
+ #include "Core/System.h"
+ 
++// StaticRecompCore.cpp: non-zero when StaticRecompCore should run this address.
++u32 StaticRecompShouldYieldAt(u32 address);
++
+ CachedInterpreter::CachedInterpreter(Core::System& system) : JitBase(system), m_block_cache(*this)
+ {
+ }
+@@ -100,6 +103,12 @@ void CachedInterpreter::Run()
+ 
+     do
+     {
++      // As the StaticRecomp fallback, give control back whenever the recompiled
++      // module or a host call (a mod's hook or patch) wants the next address, as
++      // the JITs' dispatchers do. This interpreter never links blocks, so every
++      // block starts here.
++      if (IsStaticRecompFallback() && StaticRecompShouldYieldAt(m_ppc_state.pc))
++        return;
+       ExecuteOneBlock();
+     } while (m_ppc_state.downcount > 0 && *state_ptr == CPU::State::Running);
+   }
+diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
+index a89704f..7724891 100644
+--- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
++++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore.cpp
+@@ -25,6 +25,9 @@
+ #ifdef _M_ARM_64
+ #include "Core/PowerPC/JitArm64/Jit.h"
+ #endif
++#include "Core/PowerPC/CachedInterpreter/CachedInterpreter.h"
++
++#include <string_view>
+ 
+ 
+ StaticRecompCore* g_static_recomp_core = nullptr;
+@@ -185,16 +188,31 @@ void StaticRecompCore::Init()
+   m_lockstep_verifier = std::make_unique<StaticRecompLockstep::StaticRecompLockstepVerifier>(*this);
+   m_lockstep_verifier->Init();
+ 
++  // Code the module doesn't cover (all of it when there's no module) runs on the
++  // fallback. STATICRECOMP_INTERPRETER picks it: unset = the JIT (the CachedInterpreter
++  // where there's no JIT), "cached" = the CachedInterpreter, anything else = the plain
++  // interpreter, one instruction at a time.
++  const char* fallback_mode = std::getenv("STATICRECOMP_INTERPRETER");
++  const bool use_cached = fallback_mode ? std::string_view(fallback_mode) == "cached" :
+ #if defined(DOLPHIN_NO_JIT)
+-  // Executable memory isn't available; uncovered code runs on the interpreter.
+-#elif defined(_M_ARM_64)
+-  // STATICRECOMP_INTERPRETER=1 runs uncovered code on the interpreter, as on iOS.
+-  if (!std::getenv("STATICRECOMP_INTERPRETER"))
++                                          true;  // no executable memory: no JIT
++#else
++                                          false;
++#endif
++  if (use_cached)
++  {
++    // Keeps its pre-decoded blocks in ordinary memory, so it works without a JIT.
++    m_fallback_jit = std::make_unique<CachedInterpreter>(m_system);
++  }
++#if !defined(DOLPHIN_NO_JIT) && defined(_M_ARM_64)
++  else if (!fallback_mode)
+     m_fallback_jit = std::make_unique<JitArm64>(m_system);
+-#elif defined(_M_X86_64)
+-  if (!std::getenv("STATICRECOMP_INTERPRETER"))
++#elif !defined(DOLPHIN_NO_JIT) && defined(_M_X86_64)
++  else if (!fallback_mode)
+     m_fallback_jit = std::make_unique<Jit64>(m_system);
+ #endif
++  std::fprintf(stderr, "[staticrecomp] fallback: %s\n",
++               use_cached ? "CachedInterpreter" : m_fallback_jit ? "JIT" : "Interpreter");
+   if (m_fallback_jit)
+   {
+     m_fallback_jit->SetStaticRecompFallback(true);

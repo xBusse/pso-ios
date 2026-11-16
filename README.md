@@ -117,6 +117,19 @@ To get `PsoV3.dol` without Dolphin, open [the extractor page](https://xbusse.git
 (`docs/extract/`): it copies the file out of an ISO, CISO, GCZ or RVZ image inside your browser, uploads nothing,
 and checks it's the right version.
 
+## Interpreter build (experimental, `interpreter-mode` branch)
+
+The app with no game module at all: it runs the game's own code from your disc image on Dolphin's
+CachedInterpreter, so it needs no build step and can be shared. Each **Build engine** run attaches it to the
+engine release as `PSO-interpreter-unsigned-<commit>.ipa`. Install it and use **Game Files → Import disc
+image** as usual. Expect it to be slower than the recompiled build; how much is what this branch is finding out.
+
+- The runtime picks the fallback with `STATICRECOMP_INTERPRETER` (unset: JIT, or the CachedInterpreter where
+  there's no JIT; `cached`: the CachedInterpreter; anything else: the plain interpreter).
+  `patches/dolphin-0006-cached-interpreter-fallback.patch` adds the CachedInterpreter option and makes it give
+  control back at mod hooks, so widescreen, the cheats and the camera still work.
+- `make run-interp` runs it on the Mac (`INTERP=plain` for the plain interpreter). The title bar shows the speed.
+
 ## Building for iOS (Mac with Xcode)
 
     make ios                          # after `make extract DISC=...`, or:

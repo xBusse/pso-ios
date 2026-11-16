@@ -6,6 +6,7 @@
 #                                 (or DOL=path/PsoV3.dol: enough for `make ios`)
 #   make recompile                Recompile PsoV3.dol and build the native module
 #   make run                      Recompile if needed and launch the game
+#   make run-interp               Run with no recompiled module, on the interpreter
 #   make names                    Write build/pso.map (decomp function names)
 #   make ios                      Build build/PSO-unsigned.ipa (needs Xcode)
 #   make ios-engine               Build the prebuilt engine (the app without game code)
@@ -39,10 +40,10 @@ DOLPHIN_PATCHES := $(wildcard patches/dolphin-*.patch)
 DOLPHIN_DIR := $(MODERNGEKKO_DIR)/vendor/dolphin
 
 .DEFAULT_GOAL := help
-.PHONY: help tools dolrecomp moderngekko host-dolrecomp patch-moderngekko user-config submodules decomp extract recompile run names ios ios-engine ios-game module-sources icon clean clean-game
+.PHONY: help tools dolrecomp moderngekko host-dolrecomp patch-moderngekko user-config submodules decomp extract recompile run names run-interp ios ios-engine ios-game module-sources icon clean clean-game
 
 help:
-	@sed -n '4,12p' Makefile | sed 's/^# //'
+	@sed -n '4,13p' Makefile | sed 's/^# //'
 
 # DolRecomp and ModernGekko (with Dolphin and its libraries). Dolphin's
 # prebuilt Windows Qt and FFmpeg are large and unused here, so they're skipped.
@@ -140,6 +141,13 @@ $(CHEATS_MOD): mods/cheats/cheats.c mods/cheats/pso_cheats.h
 
 run: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
 	$(PORT_BIN) run $(GAME_DIR) --backend $(BACKEND) --toolchain $(TOOLCHAIN) --output $(MODULES_DIR) -- --user-dir $(USER_DIR) $(RUN_ARGS)
+
+# The game with no recompiled module, all of it on Dolphin's CachedInterpreter, as
+# the public (game-free) iOS build runs it. Prints the fallback in use at boot.
+# INTERP=plain uses the one-instruction-at-a-time interpreter instead.
+INTERP ?= cached
+run-interp: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
+	STATICRECOMP_INTERPRETER=$(INTERP) STATICRECOMP_MODULE=/nonexistent/no-module $(MODERNGEKKO_BUILD)/moderngekko-run --game $(GAME_DIR) --allow-interpreter --user-dir $(USER_DIR) $(RUN_ARGS)
 
 # iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the
 # runtime, game module and app for the iOS SDK.

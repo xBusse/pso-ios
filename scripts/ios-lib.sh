@@ -65,22 +65,25 @@ add_resources() {
   scripts/ios-icon.sh ios/icon/AppIcon.png "$app" "$scratch/icon"
 }
 
-# package_ipa <PSO.app> <scratch dir>
-# Ad-hoc signs the app and its game module and zips build/PSO-unsigned-<time>.ipa;
-# build/PSO-unsigned.ipa links to the newest. Sign for your device with your
-# usual sideloading tool.
+# package_ipa <PSO.app> <scratch dir> [name]
+# Ad-hoc signs the app (and its game module, if it has one) and zips
+# build/<name>-<time>.ipa (name defaults to PSO-unsigned); build/<name>.ipa links
+# to the newest. Sign for your device with your usual sideloading tool.
 package_ipa() {
-  local app="$1" scratch="$2"
+  local app="$1" scratch="$2" name="${3:-PSO-unsigned}"
   step "Packaging"
-  codesign --force --sign - "$app"/Frameworks/*.dylib
+  local lib
+  for lib in "$app"/Frameworks/*.dylib; do
+    if [ -e "$lib" ]; then codesign --force --sign - "$lib"; fi
+  done
   codesign --force --sign - "$app"
-  local ipa="PSO-unsigned-$(date +%Y%m%d-%H%M%S).ipa"
+  local ipa="$name-$(date +%Y%m%d-%H%M%S).ipa"
   rm -rf "$scratch/Payload"
   mkdir -p "$scratch/Payload"
   cp -R "$app" "$scratch/Payload/"
   (cd "$scratch" && zip -qry "$ROOT/build/$ipa" Payload)
   rm -rf "$scratch/Payload"
-  ln -sf "$ipa" build/PSO-unsigned.ipa
+  ln -sf "$ipa" "build/$name.ipa"
   ls -lh "build/$ipa"
   if [ -n "$IPA_COPY_DIR" ] && [ -d "$IPA_COPY_DIR" ]; then
     cp "build/$ipa" "$IPA_COPY_DIR/"

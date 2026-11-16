@@ -299,7 +299,18 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     moderngekko::RuntimeConfig config;
     config.game_root = game;
     config.user_directory = user;
-    config.module = moderngekko::ModuleSource::DynamicPath(module);
+    // With the game module (built from your own PsoV3.dol) the game runs recompiled.
+    // Without it -- the public build, which has no game code -- the runtime runs the
+    // game's own code from the disc on the CachedInterpreter.
+    if ([NSFileManager.defaultManager fileExistsAtPath:@(module.c_str())])
+    {
+      config.module = moderngekko::ModuleSource::DynamicPath(module);
+    }
+    else
+    {
+      printf("PSO: no game module in the app, running on the interpreter\n");
+      config.allow_interpreter = true;
+    }
     config.attached_mods.push_back(pso_widescreen_descriptor());
     config.attached_mods.push_back(pso_cheats_descriptor());
     config.graphics.backend = "Metal";
