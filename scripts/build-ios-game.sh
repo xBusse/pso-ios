@@ -4,7 +4,7 @@
 # Turns a prebuilt engine (build-ios-engine.sh) and your own PsoV3.dol into the
 # app: recompiles the DOL with the engine's DolRecomp, builds the game module for
 # iOS, puts it in the engine's app and packages build/PSO-unsigned-<time>.ipa.
-# Only the game module is compiled, so this takes minutes, not an hour.
+# Only the game module is compiled (still most of the work: ~17 min on an 8-core Mac).
 #
 # The module has to come from the same pso-ios commit as the engine (they share
 # the runtime ABI), so check out that commit first: engine.json names it.

@@ -108,9 +108,10 @@ hash, because CISO drops the disc's padding.
 [docs/build-with-github.md](docs/build-with-github.md) is a step-by-step guide to building the app on
 GitHub's Macs from a browser: a private copy of this repo holds your `PsoV3.dol`, and the **Build iOS app**
 workflow (`.github/workflows/build-ipa.yml`) builds the newest code from this repo and hands back the ipa.
-It takes about 10 to 15 minutes: the **Build engine** workflow here (`.github/workflows/build-engine.yml`)
+The **Build engine** workflow here (`.github/workflows/build-engine.yml`)
 publishes a prebuilt engine for each change, the app and runtime with no game code, so a private build only
-compiles the game module from its `PsoV3.dol` (`make ios-game`). Without an engine it falls back to a full build.
+compiles the game module from its `PsoV3.dol` (`make ios-game`), which is most of the work: about 17 minutes on an
+8-core Mac, roughly 35 to 45 on GitHub's 3-core Macs. Without an engine it falls back to a full build.
 
 To get `PsoV3.dol` without Dolphin, open [the extractor page](https://xbusse.github.io/pso-ios/extract/)
 (`docs/extract/`): it copies the file out of an ISO, CISO, GCZ or RVZ image inside your browser, uploads nothing,
@@ -122,7 +123,7 @@ and checks it's the right version.
     make ios DOL=/path/to/PsoV3.dol   # only the game program, copied out of the disc (e.g. with Dolphin)
     make ios-engine                   # the app without game code: build/pso-engine-<commit>.tar.gz
     make ios-game ENGINE=build/pso-engine-<commit>.tar.gz DOL=/path/to/PsoV3.dol
-                                      # your game on a prebuilt engine (same commit), in minutes
+                                      # your game on a prebuilt engine (same commit)
 
 This builds the recompiler if needed, recompiles `PsoV3.dol`, builds the runtime, game module and app for the
 iOS SDK, and writes `build/PSO-unsigned-<date>-<time>.ipa` (`build/PSO-unsigned.ipa` links to the newest). Sign

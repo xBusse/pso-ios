@@ -8,8 +8,8 @@
 # newest version and your copy never needs updating. See docs/build-with-github.md.
 #
 # Normally it downloads the main repo's prebuilt engine (the app without game code) and only
-# compiles the game module from your PsoV3.dol: about 10 to 15 minutes. With no engine for that
-# branch, or with "full build" ticked, it builds everything, which takes about an hour.
+# compiles the game module from your PsoV3.dol: about 35 to 45 minutes. With no engine for that
+# branch, or with "full build" ticked, it builds everything, about 15 minutes more.
 #
 # The .ipa contains the recompiled game, so this refuses to run in a public repo.
 
@@ -25,7 +25,7 @@ on:
         description: Branch of that repository
         default: main
       full:
-        description: "Full build (ignore the prebuilt engine; about an hour)"
+        description: "Full build (ignore the prebuilt engine; about 15 minutes longer)"
         type: boolean
         default: false
 
@@ -71,7 +71,7 @@ jobs:
                    '[.[] | select((.tagName | startswith($p)) and (.tagName | ltrimstr($p) | test("^[0-9a-f]{12}$")))]
                     | sort_by(.createdAt) | last | .tagName // empty' || true)"
           if [ -z "$tag" ]; then
-            echo "::notice::No prebuilt engine for $SOURCE $REF, so this is a full build (about an hour)."
+            echo "::notice::No prebuilt engine for $SOURCE $REF, so this is a full build."
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

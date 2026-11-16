@@ -16,7 +16,7 @@ Sega's code, so it can't be shared, and the app built from it can't be shared ei
 project's prebuilt engine (the app without any game code), turns your `PsoV3.dol` into the game part, puts the
 two together and gives the app back only to you.
 
-The build takes about **10 to 15 minutes**. You do steps 1 to 3 once. After that, getting a new version only takes
+The build takes about **35 to 45 minutes**. You do steps 1 to 3 once. After that, getting a new version only takes
 step 4 again.
 
 ---
@@ -81,12 +81,12 @@ Releases of a private repository are private too. Don't skip "Publish": the buil
 3. On the right, click **Run workflow**, leave the boxes as they are, and click the green
    **Run workflow** button.
 4. A new run appears in the list after a few seconds (refresh if it doesn't). It shows a yellow dot while it
-   builds and turns into a green tick when it's done, about **10 to 15 minutes** later. You can close the page in the
+   builds and turns into a green tick when it's done, about **35 to 45 minutes** later. You can close the page in the
    meantime; GitHub emails you if a run fails.
 
 The boxes are for testing other versions: **source** is the project the code comes from and **ref** is its
-branch. **Full build** builds everything from scratch instead of using the prebuilt engine, which takes about an
-hour (a run also does this by itself if that branch has no prebuilt engine). Leave them alone unless someone tells
+branch. **Full build** builds everything from scratch instead of using the prebuilt engine, which takes about
+15 minutes longer (a run also does this by itself if that branch has no prebuilt engine). Leave them alone unless someone tells
 you otherwise.
 
 ## Step 5: Download the app
@@ -121,7 +121,7 @@ over the old app keeps your saves and settings.
 
 Building on GitHub's Macs is free up to a monthly allowance. For private repositories, GitHub counts each Mac
 minute as 10 minutes from that allowance. The free plan includes 2,000 minutes a month, which is about
-**200 Mac minutes**, so roughly **12 builds a month** (a full build uses about four times as much). The allowance
+**200 Mac minutes**, so roughly **4 to 5 builds a month**. The allowance
 resets each month.
 
 - See how much you've used under your profile picture > **Settings > Billing and plans**.
