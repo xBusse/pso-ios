@@ -310,9 +310,20 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     {
       printf("PSO: no game module in the app, running on the interpreter\n");
       config.allow_interpreter = true;
+      // Speed and CPU position every 2 s in console.log (User/Logs).
+      setenv("STATICRECOMP_HEARTBEAT", "1", 1);
     }
-    config.attached_mods.push_back(pso_widescreen_descriptor());
-    config.attached_mods.push_back(pso_cheats_descriptor());
+    // Troubleshooting: an empty file named "no-mods" in the User folder starts the
+    // game without the widescreen and cheats mods (and their hooks).
+    if ([NSFileManager.defaultManager fileExistsAtPath:[@(user.c_str()) stringByAppendingPathComponent:@"no-mods"]])
+    {
+      printf("PSO: User/no-mods found, starting without mods\n");
+    }
+    else
+    {
+      config.attached_mods.push_back(pso_widescreen_descriptor());
+      config.attached_mods.push_back(pso_cheats_descriptor());
+    }
     config.graphics.backend = "Metal";
     config.show_fps_in_title = false;
 

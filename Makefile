@@ -147,7 +147,7 @@ run: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
 # INTERP=plain uses the one-instruction-at-a-time interpreter instead.
 INTERP ?= cached
 run-interp: moderngekko extract user-config $(WIDESCREEN_MOD) $(CHEATS_MOD)
-	STATICRECOMP_INTERPRETER=$(INTERP) STATICRECOMP_MODULE=/nonexistent/no-module $(MODERNGEKKO_BUILD)/moderngekko-run --game $(GAME_DIR) --allow-interpreter --user-dir $(USER_DIR) $(RUN_ARGS)
+	STATICRECOMP_HEARTBEAT=1 STATICRECOMP_INTERPRETER=$(INTERP) STATICRECOMP_MODULE=/nonexistent/no-module $(MODERNGEKKO_BUILD)/moderngekko-run --game $(GAME_DIR) --allow-interpreter --user-dir $(USER_DIR) $(RUN_ARGS)
 
 # iOS app: recompiles PsoV3.dol with the host DolRecomp, then builds the
 # runtime, game module and app for the iOS SDK.
