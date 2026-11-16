@@ -1,5 +1,5 @@
 diff --git a/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp b/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
-index 23ca5b1..44a219c 100644
+index 23ca5b1..96bb361 100644
 --- a/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
 +++ b/Source/Core/Core/PowerPC/CachedInterpreter/CachedInterpreter.cpp
 @@ -25,6 +25,11 @@
@@ -14,7 +14,21 @@ index 23ca5b1..44a219c 100644
  CachedInterpreter::CachedInterpreter(Core::System& system) : JitBase(system), m_block_cache(*this)
  {
  }
-@@ -97,9 +102,17 @@ void CachedInterpreter::Run()
+@@ -58,7 +63,12 @@ void CachedInterpreter::ExecuteOneBlock()
+   if (!normal_entry)
+   {
+     Jit(m_ppc_state.pc);
+-    return;
++    // Run the new block now, like JitArm64 does after compiling. Returning
++    // here would send the static recomp core back through its mod hook
++    // check at the same pc and fire the hook again forever.
++    normal_entry = m_block_cache.Dispatch();
++    if (!normal_entry)
++      return;
+   }
+ 
+   auto& ppc_state = m_ppc_state;
+@@ -97,9 +107,17 @@ void CachedInterpreter::Run()
      // Start new timing slice
      // NOTE: Exceptions may change PC
      core_timing.Advance();
@@ -131,7 +145,7 @@ index d084fea..cb072ab 100644
  u32 StaticRecompShouldYieldAt(u32 address);
 +void StaticRecompHeartbeat(Core::System& system);
 diff --git a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
-index d91ec2d..987ec61 100644
+index d91ec2d..c96130d 100644
 --- a/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
 +++ b/Source/Core/Core/PowerPC/StaticRecomp/StaticRecompCore_Run.cpp
 @@ -120,6 +120,7 @@ void StaticRecompCore::Run()
@@ -142,3 +156,32 @@ index d91ec2d..987ec61 100644
      const std::string current_game_id = SConfig::GetInstance().GetGameID();
      m_module_active = m_module && (current_game_id.empty() || current_game_id == m_module->game_id);
  
+@@ -239,6 +240,28 @@ void StaticRecompCore::Run()
+             m_host_call_passthrough_pc = ppc.pc;
+             m_host_call_passthrough = true;
+           }
++          {
++            // Spin detector: the same hook firing over and over with guest time
++            // standing still means control never got past it.
++            static u32 spin_pc = 0;
++            static u64 spin_ticks = 0;
++            static u32 spin_count = 0;
++            const u64 ticks = core_timing.GetTicks();
++            if (ppc.pc == spin_pc && ticks == spin_ticks)
++            {
++              if (++spin_count == 10000)
++                std::fprintf(stderr,
++                             "[staticrecomp] hook at %08x fired 10000 times without guest "
++                             "progress (lr=%08x downcount=%d exceptions=%08x)\n",
++                             ppc.pc, LR(ppc), ppc.downcount, ppc.Exceptions);
++            }
++            else
++            {
++              spin_pc = ppc.pc;
++              spin_ticks = ticks;
++              spin_count = 0;
++            }
++          }
+         }
+         // SingleStepInner delivers synchronous exceptions itself; external
+         // interrupts are delivered at slice start, as in Interpreter::Run.
