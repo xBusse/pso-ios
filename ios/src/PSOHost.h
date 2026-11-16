@@ -17,7 +17,8 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
                   void (^on_exit)(NSString* error));
 
 void PSOSetPaused(bool paused);
-// Whether this launch loaded the widescreen and cheats mods (Settings > Mods > LOAD MODS).
+// Whether this launch loaded (or, before the game starts, will load) the widescreen and
+// cheats mods (Settings > Mods > LOAD MODS).
 bool PSOModsLoaded(void);
 void PSORequestStop(void);
 

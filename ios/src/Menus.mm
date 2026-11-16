@@ -84,6 +84,7 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
   page.smallItems = YES;
   page.valueColumn = 8.2;
   __weak PSOPageViewController* weakPage = page;
+  __block void (^updateCheatHelp)(void) = nil;
 
   page.items = @[
     [PSOMenuItem choice:@"LOAD MODS"
@@ -93,6 +94,8 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
                   }
                  adjust:^(NSInteger) {
                    PSOSettings.modsEnabled = !PSOSettings.modsEnabled;
+                   if (updateCheatHelp)
+                     updateCheatHelp();
                  }],
     [PSOMenuItem choice:@"INFINITE MESETA"
                    help:@"Keeps your meseta at 999,999."
@@ -134,32 +137,36 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
                  adjust:^(NSInteger d) {
                    PSOSettings.rareMultiplier = Cycle(PSOSettings.rareMultipliers, PSOSettings.rareMultiplier, d);
                  }],
-    [PSOMenuItem choice:@"SPEED LOG"
-                   help:@"For troubleshooting: writes the emulation speed to User/Logs/console.log every 2 seconds. Takes effect the next time you open the app."
-                  value:^{
-                    return OnOff(PSOSettings.speedLog, @"On", @"Off");
-                  }
-                 adjust:^(NSInteger) {
-                   PSOSettings.speedLog = !PSOSettings.speedLog;
-                 }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];
     }],
   ];
   // The cheats need the mods loaded, and public servers ban cheaters
-  // (Settings.cheatsAllowed). LOAD MODS (first) and SPEED LOG (last but one) always work.
-  const NSUInteger first_cheat = 1, last_cheat = page.items.count - 3;
+  // (Settings.cheatsAllowed). LOAD MODS (first) always works.
+  const NSUInteger first_cheat = 1, last_cheat = page.items.count - 2;
+  NSMutableArray<NSString*>* cheatHelp = [NSMutableArray array];
   for (NSUInteger i = first_cheat; i <= last_cheat; ++i)
   {
     PSOMenuItem* item = page.items[i];
+    [cheatHelp addObject:item.help ?: @""];
     item.enabled = ^{
       return (BOOL)(PSOModsLoaded() && PSOSettings.cheatsAllowed);
     };
-    if (!PSOModsLoaded())
-      item.help = @"Mods are off. Turn on LOAD MODS and reopen the app.";
-    else if (!PSOSettings.cheatsAllowed)
-      item.help = @"Off while Network is set to a public server.";
   }
+  updateCheatHelp = ^{
+    PSOPageViewController* p = weakPage;
+    for (NSUInteger i = first_cheat; i <= last_cheat && i < p.items.count; ++i)
+    {
+      NSString* help = cheatHelp[i - first_cheat];
+      if (!PSOModsLoaded())
+        help = PSOSettings.modsEnabled ? @"Reopen the app to load the mods."
+                                       : @"Turn on LOAD MODS to use this.";
+      else if (!PSOSettings.cheatsAllowed)
+        help = @"Off while Network is set to a public server.";
+      p.items[i].help = help;
+    }
+  };
+  updateCheatHelp();
   return page;
 }
 
@@ -326,6 +333,31 @@ static PSOPageViewController* MakeControllerPage(BOOL overGame)
   return page;
 }
 
+static PSOPageViewController* MakeDebugPage(BOOL overGame)
+{
+  PSOPageViewController* page = [PSOPageViewController new];
+  page.pageTitle = @"Debug";
+  page.overGame = overGame;
+  page.smallItems = YES;
+  page.valueColumn = 8.2;
+  __weak PSOPageViewController* weakPage = page;
+  page.items = @[
+    [PSOMenuItem choice:@"SPEED LOG"
+                   help:@"Writes the emulation speed to User/Logs/console.log every 2 seconds. Takes effect the "
+                        @"next time you open the app."
+                  value:^{
+                    return OnOff(PSOSettings.speedLog, @"On", @"Off");
+                  }
+                 adjust:^(NSInteger) {
+                   PSOSettings.speedLog = !PSOSettings.speedLog;
+                 }],
+    [PSOMenuItem action:@"BACK" help:nil run:^{
+      [weakPage goBack];
+    }],
+  ];
+  return page;
+}
+
 PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
 {
   PSOPageViewController* page = [PSOPageViewController new];
@@ -480,6 +512,11 @@ PSOPageViewController* PSOMakeSettingsPage(BOOL overGame)
                    help:@"Play online: on a public server, or on a private newserv server."
                     run:^{
                       [weakPage showPage:MakeNetworkPage(overGame)];
+                    }],
+    [PSOMenuItem action:@"DEBUG"
+                   help:@"Troubleshooting options."
+                    run:^{
+                      [weakPage showPage:MakeDebugPage(overGame)];
                     }],
     [PSOMenuItem action:@"BACK" help:nil run:^{
       [weakPage goBack];

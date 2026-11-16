@@ -42,6 +42,7 @@ moderngekko::Runtime* s_runtime = nullptr;
 std::atomic<bool> s_input_registered{false};
 std::atomic<bool> s_booted{false};
 std::atomic<bool> s_mods_loaded{false};
+std::atomic<bool> s_game_started{false};
 
 // Settings, kept here so they can be (re)applied once the runtime exists.
 struct VideoSettings
@@ -304,6 +305,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
       PSOSettings.modsEnabled &&
       ![NSFileManager.defaultManager fileExistsAtPath:[user_dir stringByAppendingPathComponent:@"no-mods"]];
   s_mods_loaded = load_mods;
+  s_game_started = true;
   const bool speed_log = PSOSettings.speedLog;
   NSThread* thread = [[NSThread alloc] initWithBlock:^{
     moderngekko::RuntimeConfig config;
@@ -321,7 +323,7 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
       printf("PSO: no game module in the app, running on the interpreter\n");
       config.allow_interpreter = true;
     }
-    // Settings > Mods > SPEED LOG: speed and CPU position every 2 s in console.log (User/Logs).
+    // Settings > Debug > SPEED LOG: speed and CPU position every 2 s in console.log (User/Logs).
     if (speed_log)
       setenv("STATICRECOMP_HEARTBEAT", "1", 1);
     if (load_mods)
@@ -523,7 +525,8 @@ void PSOSetCheats(bool infinite_meseta, bool infinite_hp_tp, bool mag_always_hun
 
 bool PSOModsLoaded(void)
 {
-  return s_mods_loaded;
+  // Before the game starts (the start screen's settings), the mods load if the setting says so.
+  return s_game_started ? s_mods_loaded.load() : (bool)PSOSettings.modsEnabled;
 }
 
 void PSOSetCameraSpeed(int percent)
