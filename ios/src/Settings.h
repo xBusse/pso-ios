@@ -53,8 +53,8 @@ typedef NS_ENUM(NSInteger, PSOPadButton) {
 @property(class, nonatomic) NSInteger cameraSpeed;  // percent, one of cameraSpeeds
 + (NSArray<NSNumber*>*)cameraSpeeds;   // dragging on empty space (right half) turns the camera
 
-// Mods. modsEnabled loads the widescreen and cheats mods at all (read at launch,
-// so a change takes effect the next time the app starts). Default on.
+// modsEnabled loads the cheats mod at all (read at launch, so a change takes effect
+// the next time the app starts). Default on. Widescreen always loads; Display controls it.
 @property(class, nonatomic) BOOL modsEnabled;
 // Writes the emulated speed and CPU position to console.log every 2 s (read at launch).
 @property(class, nonatomic) BOOL speedLog;

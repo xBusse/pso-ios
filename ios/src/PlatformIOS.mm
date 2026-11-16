@@ -299,12 +299,13 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
   const std::string module = module_path.UTF8String;
 
   // Read on the main thread, before the runtime thread starts.
-  // Settings > Mods > LOAD MODS off, or (older troubleshooting switch) an empty file
-  // named "no-mods" in the User folder: start without the widescreen and cheats mods.
-  const bool load_mods =
-      PSOSettings.modsEnabled &&
-      ![NSFileManager.defaultManager fileExistsAtPath:[user_dir stringByAppendingPathComponent:@"no-mods"]];
-  s_mods_loaded = load_mods;
+  // Troubleshooting: an empty file named "no-mods" in the User folder starts the game
+  // with no mods at all. Otherwise widescreen always loads (Settings > Display controls
+  // it) and the cheats load unless Settings > Mods > LOAD CHEATS is off.
+  const bool no_mods =
+      [NSFileManager.defaultManager fileExistsAtPath:[user_dir stringByAppendingPathComponent:@"no-mods"]];
+  const bool load_cheats = PSOSettings.modsEnabled && !no_mods;
+  s_mods_loaded = load_cheats;
   s_game_started = true;
   const bool speed_log = PSOSettings.speedLog;
   NSThread* thread = [[NSThread alloc] initWithBlock:^{
@@ -326,15 +327,14 @@ void PSOStartGame(NSString* game_dir, NSString* user_dir, NSString* module_path,
     // Settings > Debug > SPEED LOG: speed and CPU position every 2 s in console.log (User/Logs).
     if (speed_log)
       setenv("STATICRECOMP_HEARTBEAT", "1", 1);
-    if (load_mods)
-    {
-      config.attached_mods.push_back(pso_widescreen_descriptor());
-      config.attached_mods.push_back(pso_cheats_descriptor());
-    }
+    if (no_mods)
+      printf("PSO: User/no-mods found, starting without mods\n");
     else
-    {
-      printf("PSO: mods turned off, starting without them\n");
-    }
+      config.attached_mods.push_back(pso_widescreen_descriptor());
+    if (load_cheats)
+      config.attached_mods.push_back(pso_cheats_descriptor());
+    else if (!no_mods)
+      printf("PSO: cheats turned off, starting without them\n");
     config.graphics.backend = "Metal";
     config.show_fps_in_title = false;
 

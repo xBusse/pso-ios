@@ -87,8 +87,8 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
   __block void (^updateCheatHelp)(void) = nil;
 
   page.items = @[
-    [PSOMenuItem choice:@"LOAD MODS"
-                   help:@"Widescreen and cheats. Turn off to start the game without them. Takes effect the next time you open the app."
+    [PSOMenuItem choice:@"LOAD CHEATS"
+                   help:@"Turn off to start the game without the cheat code. Takes effect the next time you open the app."
                   value:^{
                     return OnOff(PSOSettings.modsEnabled, @"On", @"Off");
                   }
@@ -142,7 +142,7 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
     }],
   ];
   // The cheats need the mods loaded, and public servers ban cheaters
-  // (Settings.cheatsAllowed). LOAD MODS (first) always works.
+  // (Settings.cheatsAllowed). LOAD CHEATS (first) always works.
   const NSUInteger first_cheat = 1, last_cheat = page.items.count - 2;
   NSMutableArray<NSString*>* cheatHelp = [NSMutableArray array];
   for (NSUInteger i = first_cheat; i <= last_cheat; ++i)
@@ -159,8 +159,8 @@ static PSOPageViewController* MakeModsPage(BOOL overGame)
     {
       NSString* help = cheatHelp[i - first_cheat];
       if (!PSOModsLoaded())
-        help = PSOSettings.modsEnabled ? @"Reopen the app to load the mods."
-                                       : @"Turn on LOAD MODS to use this.";
+        help = PSOSettings.modsEnabled ? @"Reopen the app to load the cheats."
+                                       : @"Turn on LOAD CHEATS to use this.";
       else if (!PSOSettings.cheatsAllowed)
         help = @"Off while Network is set to a public server.";
       p.items[i].help = help;

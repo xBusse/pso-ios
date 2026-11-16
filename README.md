@@ -62,8 +62,8 @@ your own disc image.
   original setup program.
 
 **Mods** (they switch off while you're on a public server)
-- **Load mods** turns the widescreen and cheat code off entirely, for troubleshooting (applies at the next
-  launch).
+- **Load cheats** starts the game without the cheat code at all, for troubleshooting (applies at the next
+  launch). Widescreen isn't affected; **Display** controls it.
 - Infinite meseta, infinite HP/TP, and a mag you can feed at any time.
 - **EXP boost** up to 1000x. The "+EXP" number after a kill shows the boosted amount.
 - **Rare drop boost** up to 1024x, or Max, which makes every rare roll succeed.
