@@ -8,8 +8,6 @@ a computer is easiest, but every step also works in Safari on an iPhone or iPad.
 - Your own copy of *Phantasy Star Online Episode I & II Plus* for GameCube, **USA**, as a disc image (ISO,
   CISO, GCZ or RVZ). It must be the USA *Plus* version (game ID `GPOE8P`); the build checks this.
 - A free **GitHub account** ([github.com/signup](https://github.com/signup)).
-- For step 1 only: **Dolphin**, the GameCube emulator, on any Windows, Linux or Mac computer
-  ([dolphin-emu.org](https://dolphin-emu.org/download/)).
 - A way to sideload apps onto your iPhone, such as AltStore, SideStore or Sideloadly.
 
 **Why this is set up this way.** The app is built from your disc's game program, `PsoV3.dol`. That file is
@@ -24,7 +22,15 @@ step 4 again.
 
 ## Step 1: Get `PsoV3.dol` from your disc image
 
-`PsoV3.dol` is a 5 MB file inside the disc image. Dolphin can copy it out:
+`PsoV3.dol` is a 5 MB file inside the disc image.
+
+**The easy way:** open **[xbusse.github.io/pso-ios/extract](https://xbusse.github.io/pso-ios/extract/)**,
+choose your disc image (ISO, CISO, GCZ or RVZ) and tap **Save PsoV3.dol**. It works on a computer or in Safari on
+an iPhone or iPad. Everything happens in your browser; your disc image isn't uploaded anywhere. The page also
+checks that it's the right version of the game.
+
+**With Dolphin instead** (the GameCube emulator, on any Windows, Linux or Mac computer,
+[dolphin-emu.org](https://dolphin-emu.org/download/)):
 
 1. Open Dolphin. If your game isn't listed, choose **Config > Paths > Add...** and pick the folder that holds
    your disc image.

@@ -109,6 +109,10 @@ hash, because CISO drops the disc's padding.
 GitHub's Macs from a browser: a private copy of this repo holds your `PsoV3.dol`, and the **Build iOS app**
 workflow (`.github/workflows/build-ipa.yml`) builds the newest code from this repo and hands back the ipa.
 
+To get `PsoV3.dol` without Dolphin, open [the extractor page](https://xbusse.github.io/pso-ios/extract/)
+(`docs/extract/`): it copies the file out of an ISO, CISO, GCZ or RVZ image inside your browser, uploads nothing,
+and checks it's the right version.
+
 ## Building for iOS (Mac with Xcode)
 
     make ios                          # after `make extract DISC=...`, or:

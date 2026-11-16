@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get PsoV3.dol</title>
+<meta name="description" content="Copies PsoV3.dol out of your PSO Episode I & II Plus disc image, in your browser, for building pso-ios.">
+<style>
+  :root {
+    --bg: #f4f5f8;
+    --card: #ffffff;
+    --text: #1c1e26;
+    --muted: #5d6273;
+    --line: #dde0e8;
+    --accent: #2f5fd0;
+    --accent-text: #ffffff;
+    --ok: #1d7a3e;
+    --ok-bg: #e5f4ea;
+    --bad: #b3261e;
+    --bad-bg: #fbe9e7;
+    --drop: #eef2fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a;
+      --card: #1c1f28;
+      --text: #e8eaf0;
+      --muted: #a2a7b8;
+      --line: #313646;
+      --accent: #6f95f2;
+      --accent-text: #0e1220;
+      --ok: #7fd69a;
+      --ok-bg: #173022;
+      --bad: #f2a199;
+      --bad-bg: #3a1d1b;
+      --drop: #1f2638;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    margin: 20px 0;
+  }
+  .drop {
+    display: block;
+    border: 2px dashed var(--line);
+    border-radius: 12px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .drop:hover, .drop.over { background: var(--drop); border-color: var(--accent); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .button {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .drop .hint { display: block; margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
+  #status { margin-top: 16px; color: var(--muted); }
+  #status:empty { display: none; }
+  .result { margin-top: 16px; padding: 14px 16px; border-radius: 10px; }
+  .result.ok { background: var(--ok-bg); color: var(--ok); }
+  .result.bad { background: var(--bad-bg); color: var(--bad); }
+  .result p:last-child { margin-bottom: 0; }
+  .result .button { margin-top: 6px; }
+  ol { padding-left: 1.3em; margin: 0; }
+  li { margin-bottom: 6px; }
+  .small { font-size: 0.9rem; color: var(--muted); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; overflow-wrap: anywhere; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Get PsoV3.dol</h1>
+  <p class="lead">Building the <a href="https://github.com/xBusse/pso-ios">pso-ios</a> app needs one file from your copy of
+    <em>Phantasy Star Online Episode I &amp; II Plus</em> (GameCube, USA): the game program, <code>PsoV3.dol</code>.
+    This page copies it out of your disc image.</p>
+
+  <div class="card">
+    <label class="drop" id="drop">
+      <input type="file" id="file">
+      <span class="button">Choose disc image</span>
+      <span class="hint">ISO, CISO, GCZ or RVZ. You can also drop the file here.</span>
+    </label>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="result" class="result" hidden></div>
+  </div>
+
+  <div class="card">
+    <p><strong>Your disc image stays on your device.</strong> This page runs entirely in your browser: it reads the
+      few megabytes it needs from the file and uploads nothing.</p>
+    <p class="small">Works on a computer or in Safari on an iPhone or iPad. It reads RVZ files compressed with
+      Zstandard, Dolphin's default; for other RVZ settings, convert the image to ISO or RVZ (Zstandard) in Dolphin.</p>
+  </div>
+
+  <div class="card">
+    <p><strong>Next</strong></p>
+    <ol>
+      <li>Save <code>PsoV3.dol</code> somewhere you'll find it, keeping that name.</li>
+      <li>Continue with the guide, from step 2:
+        <a href="https://github.com/xBusse/pso-ios/blob/main/docs/build-with-github.md">Build the iPhone app with GitHub</a>.</li>
+    </ol>
+  </div>
+</main>
+
+<script src="fzstd.js"></script>
+<script src="extract.js"></script>
+<script>
+(function () {
+  "use strict";
+  const input = document.getElementById("file");
+  const drop = document.getElementById("drop");
+  const status = document.getElementById("status");
+  const result = document.getElementById("result");
+  let url = null;
+
+  function show(kind, html) {
+    result.className = "result " + kind;
+    result.innerHTML = html;
+    result.hidden = false;
+  }
+
+  function escape(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async function handle(file) {
+    if (!file) return;
+    result.hidden = true;
+    if (url) { URL.revokeObjectURL(url); url = null; }
+    status.textContent = "Opening " + file.name + "…";
+    try {
+      const r = await PSOExtract.extractDol(file, (text) => { status.textContent = text; });
+      status.textContent = "";
+      if (!r.ok) {
+        show("bad",
+          "<p><strong>This PsoV3.dol isn't the version the app is built from.</strong></p>" +
+          "<p>The app needs the USA <em>Plus</em> disc, revision 2 (v1.02). Yours may be an earlier revision " +
+          "or a modified copy.</p><p class=\"small\">SHA-1: <code>" + r.sha1 + "</code></p>");
+        return;
+      }
+      url = URL.createObjectURL(new Blob([r.dol], { type: "application/octet-stream" }));
+      show("ok",
+        "<p><strong>✓ Got it.</strong> PsoV3.dol from your " + r.format + " image is the right version.</p>" +
+        "<a class=\"button\" href=\"" + url + "\" download=\"PsoV3.dol\">Save PsoV3.dol</a>");
+    } catch (e) {
+      status.textContent = "";
+      const message = e instanceof PSOExtract.ExtractError ? e.message
+        : "Something went wrong reading the file (" + (e && e.message ? e.message : e) + ").";
+      show("bad", "<p>" + escape(message) + "</p>");
+    }
+  }
+
+  input.addEventListener("change", () => handle(input.files[0]));
+  ["dragenter", "dragover"].forEach((type) => drop.addEventListener(type, (e) => {
+    e.preventDefault();
+    drop.classList.add("over");
+  }));
+  ["dragleave", "drop"].forEach((type) => drop.addEventListener(type, () => drop.classList.remove("over")));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    handle(e.dataTransfer.files[0]);
+  });
+})();
+</script>
+</body>
+</html>
